@@ -32,10 +32,32 @@ export class TokenService {
     private readonly configService: ConfigService,
     private readonly redis: RedisService,
   ) {
-    this.accessTokenSecret = this.configService.get<string>('jwt.access.secret')
-    this.accessTokenExpiration = this.configService.get<string>('jwt.access.expiresIn')
-    this.refreshTokenSecret = this.configService.get<string>('jwt.refresh.secret')
-    this.refreshTokenExpiration = this.configService.get<string>('jwt.refresh.expiresIn')
+    // Получаем конфигурацию с проверкой
+    const accessTokenSecret = this.configService.get<string>('jwt.access.secret')
+    const accessTokenExpiration = this.configService.get<string>('jwt.access.expiresIn')
+    const refreshTokenSecret = this.configService.get<string>('jwt.refresh.secret')
+    const refreshTokenExpiration = this.configService.get<string>('jwt.refresh.expiresIn')
+
+    // Проверяем обязательные значения
+    if (!accessTokenSecret) {
+      throw new Error('JWT access token secret is not configured (JWT_SECRET)')
+    }
+    if (!accessTokenExpiration) {
+      throw new Error('JWT access token expiration is not configured (JWT_ACCESS_TOKEN_EXPIRATION)')
+    }
+    if (!refreshTokenSecret) {
+      throw new Error('JWT refresh token secret is not configured (JWT_REFRESH_TOKEN_SECRET)')
+    }
+    if (!refreshTokenExpiration) {
+      throw new Error(
+        'JWT refresh token expiration is not configured (JWT_REFRESH_TOKEN_EXPIRATION)',
+      )
+    }
+
+    this.accessTokenSecret = accessTokenSecret
+    this.accessTokenExpiration = accessTokenExpiration
+    this.refreshTokenSecret = refreshTokenSecret
+    this.refreshTokenExpiration = refreshTokenExpiration
 
     // Конвертируем время жизни refresh токена в секунды для Redis
     this.refreshTokenTTL = this.parseExpirationToSeconds(this.refreshTokenExpiration)

@@ -31,8 +31,19 @@ export class SmsService {
     private readonly httpService: HttpService,
     private readonly logger: LoggerService,
   ) {
-    this.apiKey = this.configService.get<string>('sms.apiKey')
-    this.from = this.configService.get<string>('sms.from')
+    // Получаем конфигурацию с проверкой
+    const apiKey = this.configService.get<string>('sms.apiKey')
+    const from = this.configService.get<string>('sms.from')
+
+    if (!apiKey) {
+      throw new Error('SMS API key is not configured (SMS_API_KEY)')
+    }
+    if (!from) {
+      throw new Error('SMS sender name is not configured (SMS_FROM)')
+    }
+
+    this.apiKey = apiKey
+    this.from = from
     this.isDevelopment = this.configService.get<string>('app.nodeEnv') === 'development'
   }
 
@@ -71,8 +82,17 @@ export class SmsService {
         balance: response.data.balance,
       })
     } catch (error) {
-      this.logger.errorWithMeta('Failed to send SMS', error, { phone, type: 'otp' }, 'SmsService')
-      throw error
+      // Правильная обработка типа error
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      const errorDetails = error instanceof Error ? error : { error: String(error) }
+
+      this.logger.errorWithMeta(
+        'Failed to send SMS',
+        errorDetails as Error,
+        { phone, type: 'otp' },
+        'SmsService',
+      )
+      throw new Error(`Failed to send SMS: ${errorMessage}`)
     }
   }
 
@@ -114,9 +134,13 @@ export class SmsService {
         smsId: smsResult.sms_id,
       })
     } catch (error) {
+      // Правильная обработка типа error
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      const errorDetails = error instanceof Error ? error : new Error(String(error))
+
       this.logger.errorWithMeta(
         'Failed to send order notification SMS',
-        error,
+        errorDetails,
         { phone, orderNumber, status },
         'SmsService',
       )
@@ -141,7 +165,11 @@ export class SmsService {
 
       return response.data.balance
     } catch (error) {
-      this.logger.error('Failed to check SMS balance', error.stack, 'SmsService')
+      // Правильная обработка типа error
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      const errorStack = error instanceof Error ? error.stack : undefined
+
+      this.logger.error(`Failed to check SMS balance: ${errorMessage}`, errorStack, 'SmsService')
       return 0
     }
   }

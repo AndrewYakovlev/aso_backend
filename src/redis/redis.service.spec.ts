@@ -1,4 +1,3 @@
-// src/redis/redis.service.spec.ts
 import { Test, TestingModule } from '@nestjs/testing'
 import { ConfigService } from '@nestjs/config'
 import { RedisService } from './redis.service'
@@ -50,7 +49,8 @@ describe('RedisService', () => {
           provide: ConfigService,
           useValue: {
             get: jest.fn((key: string, defaultValue: any) => {
-              const config = {
+              // Исправление: используем Record для динамического доступа по ключу
+              const config: Record<string, any> = {
                 'redis.ttl': 3600,
               }
               return config[key] || defaultValue

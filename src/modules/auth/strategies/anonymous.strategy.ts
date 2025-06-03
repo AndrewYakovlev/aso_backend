@@ -15,7 +15,7 @@ export class AnonymousStrategy extends PassportStrategy(Strategy, 'anonymous') {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: configService.get<string>('jwt.access.secret'),
+      secretOrKey: configService.getOrThrow<string>('jwt.access.secret'),
     })
   }
 

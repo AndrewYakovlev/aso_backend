@@ -1,4 +1,3 @@
-// src/modules/users/users.service.ts
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common'
 import { PrismaService } from '@prisma/prisma.service'
 import { User, UserRole, Prisma } from '@prisma/client'
@@ -69,8 +68,12 @@ export class UsersService {
   }
 
   async findByEmail(email: string): Promise<User | null> {
-    return this.prisma.user.findUnique({
-      where: { email },
+    // Исправление: используем findFirst вместо findUnique, так как email не является уникальным в схеме
+    return this.prisma.user.findFirst({
+      where: {
+        email,
+        deletedAt: null, // добавляем проверку на удаленных пользователей
+      },
       include: {
         customerGroup: true,
       },
@@ -137,11 +140,8 @@ export class UsersService {
         throw new NotFoundException('Пользователь не найден')
       }
 
+      // Исправление: убираем проверку phone, так как он исключен из UpdateUserDto
       const data: Prisma.UserUpdateInput = { ...updateUserDto }
-
-      if (updateUserDto.phone) {
-        data.phone = StringUtil.cleanPhone(updateUserDto.phone)
-      }
 
       const updatedUser = await this.prisma.user.update({
         where: { id },

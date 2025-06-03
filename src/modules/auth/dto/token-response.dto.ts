@@ -6,24 +6,24 @@ export class TokenResponseDto {
   @ApiProperty({
     description: 'Access token',
   })
-  accessToken: string
+  accessToken!: string
 
   @ApiProperty({
     description: 'Refresh token',
   })
-  refreshToken: string
+  refreshToken!: string
 
   @ApiProperty({
     description: 'Token type',
     example: 'Bearer',
   })
-  tokenType: string
+  tokenType!: string
 
   @ApiProperty({
     description: 'Token expiration time in seconds',
     example: 900,
   })
-  expiresIn: number
+  expiresIn!: number
 
   @ApiProperty({
     description: 'User data',

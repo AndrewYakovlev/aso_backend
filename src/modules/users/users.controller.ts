@@ -174,7 +174,9 @@ export class UsersController {
     type: UserResponseDto,
   })
   async updateCustomerGroup(@Param('id') id: string, @Body() updateGroupDto: UpdateUserGroupDto) {
-    const user = await this.usersService.updateCustomerGroup(id, updateGroupDto.customerGroupId)
+    // Преобразуем undefined в null
+    const customerGroupId = updateGroupDto.customerGroupId ?? null
+    const user = await this.usersService.updateCustomerGroup(id, customerGroupId)
     return UserResponseDto.fromEntity(user)
   }
 

@@ -5,21 +5,21 @@ import { Exclude, Expose, Type } from 'class-transformer'
 
 export class CustomerGroupDto {
   @ApiProperty()
-  id: string
+  id!: string
 
   @ApiProperty()
-  name: string
+  name!: string
 
   @ApiProperty()
-  discountPercent: number
+  discountPercent!: number
 }
 
 export class UserResponseDto {
   @ApiProperty()
-  id: string
+  id!: string
 
   @ApiProperty()
-  phone: string
+  phone!: string
 
   @ApiPropertyOptional()
   email?: string
@@ -31,7 +31,7 @@ export class UserResponseDto {
   lastName?: string
 
   @ApiProperty({ enum: UserRole })
-  role: UserRole
+  role!: UserRole
 
   @ApiPropertyOptional({ type: CustomerGroupDto })
   @Type(() => CustomerGroupDto)
@@ -41,10 +41,10 @@ export class UserResponseDto {
   personalDiscount?: number
 
   @ApiProperty()
-  createdAt: Date
+  createdAt!: Date
 
   @ApiProperty()
-  updatedAt: Date
+  updatedAt!: Date
 
   @Exclude()
   deletedAt?: Date

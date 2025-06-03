@@ -1,5 +1,4 @@
-// src/app.module.ts
-import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common'
+import { Module, MiddlewareConsumer, NestModule, RequestMethod } from '@nestjs/common'
 import { ConfigModule } from '@nestjs/config'
 import { APP_FILTER, APP_INTERCEPTOR, APP_GUARD } from '@nestjs/core'
 import { PrismaModule } from './prisma/prisma.module'
@@ -60,6 +59,6 @@ import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard'
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer.apply(LoggerMiddleware).forRoutes('*')
+    consumer.apply(LoggerMiddleware).forRoutes({ path: '*', method: RequestMethod.ALL })
   }
 }

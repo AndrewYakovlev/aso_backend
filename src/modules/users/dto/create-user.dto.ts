@@ -13,7 +13,7 @@ export class CreateUserDto {
   @Matches(/^\+7\d{10}$/, {
     message: 'Номер телефона должен быть в формате +7XXXXXXXXXX',
   })
-  phone: string
+  phone!: string
 
   @ApiPropertyOptional({
     description: 'Email',

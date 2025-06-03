@@ -71,7 +71,11 @@ export class AuthService {
     try {
       await this.smsService.sendOtp(normalizedPhone, code)
     } catch (error) {
-      this.logger.error('Failed to send OTP SMS', error.stack, 'AuthService')
+      // Исправление: проверяем тип error
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      const errorStack = error instanceof Error ? error.stack : undefined
+
+      this.logger.error('Failed to send OTP SMS', errorStack, 'AuthService')
       await this.otpService.deleteOtp(normalizedPhone)
       throw new BadRequestException('Не удалось отправить SMS. Попробуйте позже.')
     }

@@ -51,13 +51,13 @@ describe('LoggerService', () => {
         {
           provide: ConfigService,
           useValue: {
-            get: jest.fn((key: string, defaultValue: any) => {
-              const config = {
+            get: jest.fn((key: string, defaultValue?: any) => {
+              const config: Record<string, any> = {
                 'app.nodeEnv': 'test',
                 'app.logging.level': 'debug',
                 'app.logging.filePath': './logs',
               }
-              return config[key] || defaultValue
+              return config[key] !== undefined ? config[key] : defaultValue
             }),
           },
         },

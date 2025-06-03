@@ -1,13 +1,11 @@
 // src/health/indicators/redis.health.ts
 import { Injectable } from '@nestjs/common'
-import { HealthIndicator, HealthIndicatorResult, HealthCheckError } from '@nestjs/terminus'
+import { HealthIndicatorResult } from '@nestjs/terminus'
 import { RedisService } from '../../redis/redis.service'
 
 @Injectable()
-export class RedisHealthIndicator extends HealthIndicator {
-  constructor(private readonly redis: RedisService) {
-    super()
-  }
+export class RedisHealthIndicator {
+  constructor(private readonly redis: RedisService) {}
 
   async isHealthy(key: string): Promise<HealthIndicatorResult> {
     try {
@@ -21,20 +19,24 @@ export class RedisHealthIndicator extends HealthIndicator {
       // Get additional info
       const info = await client.info('server')
       const version = info.match(/redis_version:(.+)/)?.[1]
+      const uptimeMatch = info.match(/uptime_in_seconds:(\d+)/)
+      const uptime = uptimeMatch ? parseInt(uptimeMatch[1], 10) : undefined
 
-      return this.getStatus(key, true, {
-        status: 'up',
-        version,
-        uptime: await client.info('uptime_in_seconds'),
-      })
+      return {
+        [key]: {
+          status: 'up',
+          message: 'Redis is healthy',
+          version,
+          uptime,
+        },
+      }
     } catch (error) {
-      throw new HealthCheckError(
-        'Redis health check failed',
-        this.getStatus(key, false, {
+      return {
+        [key]: {
           status: 'down',
           message: error instanceof Error ? error.message : 'Unknown error',
-        }),
-      )
+        },
+      }
     }
   }
 }
