@@ -4,8 +4,8 @@ import { AppModule } from './app.module'
 import { ValidationPipe, VersioningType, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger'
-import * as helmet from 'helmet'
-import * as compression from 'compression'
+import helmet from 'helmet'
+import compression from 'compression'
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter'
 import { ResponseInterceptor } from './common/interceptors/response.interceptor'
 
@@ -17,9 +17,9 @@ async function bootstrap() {
   })
 
   const configService = app.get(ConfigService)
-  const port = configService.get<number>('app.port')
-  const apiPrefix = configService.get<string>('app.apiPrefix')
-  const apiVersion = configService.get<string>('app.apiVersion')
+  const port = configService.get<number>('app.port', 4000)
+  const apiPrefix = configService.get<string>('app.apiPrefix', 'api')
+  const apiVersion = configService.get<string>('app.apiVersion', 'v1')
 
   // Security
   app.use(helmet())
