@@ -1,6 +1,7 @@
+// src/app.module.ts
 import { Module, MiddlewareConsumer, NestModule, RequestMethod } from '@nestjs/common'
 import { ConfigModule } from '@nestjs/config'
-import { APP_FILTER, APP_INTERCEPTOR, APP_GUARD } from '@nestjs/core'
+import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core'
 import { PrismaModule } from './prisma/prisma.module'
 import { RedisModule } from './redis/redis.module'
 import { LoggerModule } from './logger/logger.module'
@@ -12,7 +13,6 @@ import { validationSchema } from './config/validation.schema'
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter'
 import { ResponseInterceptor } from './common/interceptors/response.interceptor'
 import { LoggerMiddleware } from './common/middleware/logger.middleware'
-import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard'
 
 @Module({
   imports: [
@@ -51,14 +51,11 @@ import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard'
       provide: APP_INTERCEPTOR,
       useClass: ResponseInterceptor,
     },
-    {
-      provide: APP_GUARD,
-      useClass: JwtAuthGuard,
-    },
+    // Убираем глобальный JwtAuthGuard
   ],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer.apply(LoggerMiddleware).forRoutes({ path: '*', method: RequestMethod.ALL })
+    consumer.apply(LoggerMiddleware).forRoutes('')
   }
 }

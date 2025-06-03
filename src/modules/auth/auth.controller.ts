@@ -10,20 +10,19 @@ import {
   Get,
   Headers,
 } from '@nestjs/common'
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger'
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiHeader } from '@nestjs/swagger'
 import { AuthService } from './auth.service'
 import { SendOtpDto } from './dto/send-otp.dto'
 import { VerifyOtpDto } from './dto/verify-otp.dto'
 import { RefreshTokenDto } from './dto/refresh-token.dto'
 import { TokenResponseDto } from './dto/token-response.dto'
 import { AnonymousTokenDto } from './dto/anonymous-token.dto'
-import { JwtAuthGuard } from './guards/jwt-auth.guard'
 import { JwtRefreshGuard } from './guards/jwt-refresh.guard'
 import { AnonymousAuthGuard } from './guards/anonymous-auth.guard'
 import { CurrentUser } from './decorators/current-user.decorator'
+import { RequireAuth } from './decorators/require-auth.decorator'
 import { RateLimit } from '@common/decorators/rate-limit.decorator'
 import { UserResponseDto } from '../users/dto/user-response.dto'
-import { Public } from './decorators'
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -37,7 +36,6 @@ export class AuthController {
     description: 'Анонимный токен успешно создан',
     type: AnonymousTokenDto,
   })
-  @Public()
   async getAnonymousToken(
     @Headers('user-agent') userAgent: string,
     @Req() req: any,
@@ -47,10 +45,13 @@ export class AuthController {
   }
 
   @Get('verify-anonymous')
-  @Public()
   @UseGuards(AnonymousAuthGuard)
   @ApiOperation({ summary: 'Проверка анонимного токена' })
-  @ApiBearerAuth()
+  @ApiHeader({
+    name: 'x-anonymous-token',
+    description: 'Anonymous session token',
+    required: true,
+  })
   @ApiResponse({
     status: 200,
     description: 'Токен валиден',
@@ -114,9 +115,8 @@ export class AuthController {
   }
 
   @Post('logout')
-  @UseGuards(JwtAuthGuard)
+  @RequireAuth()
   @ApiOperation({ summary: 'Выход из системы' })
-  @ApiBearerAuth()
   @ApiResponse({
     status: 200,
     description: 'Успешный выход',
@@ -128,9 +128,8 @@ export class AuthController {
   }
 
   @Get('me')
-  @UseGuards(JwtAuthGuard)
+  @RequireAuth()
   @ApiOperation({ summary: 'Получение данных текущего пользователя' })
-  @ApiBearerAuth()
   @ApiResponse({
     status: 200,
     description: 'Данные пользователя',

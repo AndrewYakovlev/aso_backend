@@ -7,12 +7,11 @@ import {
   Patch,
   Param,
   Delete,
-  UseGuards,
   Query,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common'
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger'
+import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
 import { UsersService } from './users.service'
 import { CreateUserDto } from './dto/create-user.dto'
 import { UpdateUserDto } from './dto/update-user.dto'
@@ -20,22 +19,19 @@ import { UpdateUserRoleDto } from './dto/update-user-role.dto'
 import { UpdateUserGroupDto } from './dto/update-user-group.dto'
 import { UserResponseDto } from './dto/user-response.dto'
 import { UsersFilterDto } from './dto/users-filter.dto'
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
-import { RolesGuard } from '../auth/guards/roles.guard'
-import { Roles } from '../auth/decorators/roles.decorator'
 import { CurrentUser } from '../auth/decorators/current-user.decorator'
+import { RequireAuth } from '../auth/decorators/require-auth.decorator'
+import { RequireRoles } from '../auth/decorators/require-roles.decorator'
 import { UserRole } from '@prisma/client'
 import { PaginationDto } from '@common/dto/pagination.dto'
 
 @ApiTags('Users')
 @Controller('users')
-@UseGuards(JwtAuthGuard, RolesGuard)
-@ApiBearerAuth()
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Get()
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @RequireRoles(UserRole.ADMIN, UserRole.MANAGER)
   @ApiOperation({ summary: 'Получить список пользователей' })
   @ApiResponse({
     status: 200,
@@ -51,7 +47,7 @@ export class UsersController {
   }
 
   @Get('managers')
-  @Roles(UserRole.ADMIN)
+  @RequireRoles(UserRole.ADMIN)
   @ApiOperation({ summary: 'Получить список менеджеров' })
   @ApiResponse({
     status: 200,
@@ -64,6 +60,7 @@ export class UsersController {
   }
 
   @Get('profile')
+  @RequireAuth()
   @ApiOperation({ summary: 'Получить профиль текущего пользователя' })
   @ApiResponse({
     status: 200,
@@ -76,6 +73,7 @@ export class UsersController {
   }
 
   @Get('profile/stats')
+  @RequireAuth()
   @ApiOperation({ summary: 'Получить статистику текущего пользователя' })
   @ApiResponse({
     status: 200,
@@ -86,7 +84,7 @@ export class UsersController {
   }
 
   @Get(':id')
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @RequireRoles(UserRole.ADMIN, UserRole.MANAGER)
   @ApiOperation({ summary: 'Получить пользователя по ID' })
   @ApiResponse({
     status: 200,
@@ -99,7 +97,7 @@ export class UsersController {
   }
 
   @Get(':id/stats')
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @RequireRoles(UserRole.ADMIN, UserRole.MANAGER)
   @ApiOperation({ summary: 'Получить статистику пользователя' })
   @ApiResponse({
     status: 200,
@@ -110,7 +108,7 @@ export class UsersController {
   }
 
   @Post()
-  @Roles(UserRole.ADMIN)
+  @RequireRoles(UserRole.ADMIN)
   @ApiOperation({ summary: 'Создать пользователя' })
   @ApiResponse({
     status: 201,
@@ -123,6 +121,7 @@ export class UsersController {
   }
 
   @Patch('profile')
+  @RequireAuth()
   @ApiOperation({ summary: 'Обновить профиль текущего пользователя' })
   @ApiResponse({
     status: 200,
@@ -140,7 +139,7 @@ export class UsersController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.ADMIN)
+  @RequireRoles(UserRole.ADMIN)
   @ApiOperation({ summary: 'Обновить пользователя' })
   @ApiResponse({
     status: 200,
@@ -153,7 +152,7 @@ export class UsersController {
   }
 
   @Patch(':id/role')
-  @Roles(UserRole.ADMIN)
+  @RequireRoles(UserRole.ADMIN)
   @ApiOperation({ summary: 'Изменить роль пользователя' })
   @ApiResponse({
     status: 200,
@@ -166,7 +165,7 @@ export class UsersController {
   }
 
   @Patch(':id/customer-group')
-  @Roles(UserRole.ADMIN)
+  @RequireRoles(UserRole.ADMIN, UserRole.MANAGER)
   @ApiOperation({ summary: 'Изменить группу клиента' })
   @ApiResponse({
     status: 200,
@@ -181,7 +180,7 @@ export class UsersController {
   }
 
   @Delete(':id')
-  @Roles(UserRole.ADMIN)
+  @RequireRoles(UserRole.ADMIN)
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Удалить пользователя' })
   @ApiResponse({
