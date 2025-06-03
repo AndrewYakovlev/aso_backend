@@ -1,15 +1,19 @@
 // src/app.module.ts
 import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common'
 import { ConfigModule } from '@nestjs/config'
-import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core'
+import { APP_FILTER, APP_INTERCEPTOR, APP_GUARD } from '@nestjs/core'
 import { PrismaModule } from './prisma/prisma.module'
 import { RedisModule } from './redis/redis.module'
 import { LoggerModule } from './logger/logger.module'
+import { HealthModule } from './health/health.module'
+import { AuthModule } from './modules/auth/auth.module'
+import { UsersModule } from './modules/users/users.module'
 import configuration from './config/configuration'
 import { validationSchema } from './config/validation.schema'
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter'
 import { ResponseInterceptor } from './common/interceptors/response.interceptor'
 import { LoggerMiddleware } from './common/middleware/logger.middleware'
+import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard'
 
 @Module({
   imports: [
@@ -26,9 +30,10 @@ import { LoggerMiddleware } from './common/middleware/logger.middleware'
     PrismaModule,
     RedisModule,
     LoggerModule,
+    HealthModule,
+    AuthModule,
+    UsersModule,
     // Здесь будут подключаться остальные модули:
-    // AuthModule,
-    // UsersModule,
     // ProductsModule,
     // CategoriesModule,
     // OrdersModule,
@@ -46,6 +51,10 @@ import { LoggerMiddleware } from './common/middleware/logger.middleware'
     {
       provide: APP_INTERCEPTOR,
       useClass: ResponseInterceptor,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: JwtAuthGuard,
     },
   ],
 })

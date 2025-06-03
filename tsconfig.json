@@ -28,6 +28,6 @@
       "@prisma/*": ["src/prisma/*"]
     }
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "test/test.utils.ts"],
   "exclude": ["node_modules", "dist", "test", "**/*spec.ts"]
 }
