@@ -35,11 +35,12 @@ export class AuthService {
 
     const token = this.tokenService.generateAnonymousToken(anonymousUser.sessionId)
 
-    // Сохраняем сессию в Redis
+    // Сохраняем сессию в Redis с увеличенным TTL (1 год)
+    const anonymousSessionTTL = this.tokenService.getAnonymousTokenExpiration()
     await this.redis.set(
       `${CacheKeys.SESSION}anonymous:${anonymousUser.sessionId}`,
       anonymousUser,
-      CacheTTL.SESSION,
+      anonymousSessionTTL,
     )
 
     this.logger.logBusinessEvent('anonymous_session_created', undefined, {
@@ -50,7 +51,7 @@ export class AuthService {
     return {
       token,
       sessionId: anonymousUser.sessionId,
-      expiresIn: this.configService.get<number>('jwt.access.expiresIn'),
+      expiresIn: anonymousSessionTTL,
     }
   }
 

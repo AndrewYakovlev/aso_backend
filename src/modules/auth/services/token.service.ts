@@ -1,4 +1,3 @@
-// src/modules/auth/services/token.service.ts
 import { Injectable } from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
 import { ConfigService } from '@nestjs/config'
@@ -26,38 +25,17 @@ export class TokenService {
   private readonly refreshTokenSecret: string
   private readonly refreshTokenExpiration: string
   private readonly refreshTokenTTL: number
+  private readonly anonymousTokenExpiration: string = '365d' // 1 год для анонимных токенов
 
   constructor(
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly redis: RedisService,
   ) {
-    // Получаем конфигурацию с проверкой
-    const accessTokenSecret = this.configService.get<string>('jwt.access.secret')
-    const accessTokenExpiration = this.configService.get<string>('jwt.access.expiresIn')
-    const refreshTokenSecret = this.configService.get<string>('jwt.refresh.secret')
-    const refreshTokenExpiration = this.configService.get<string>('jwt.refresh.expiresIn')
-
-    // Проверяем обязательные значения
-    if (!accessTokenSecret) {
-      throw new Error('JWT access token secret is not configured (JWT_SECRET)')
-    }
-    if (!accessTokenExpiration) {
-      throw new Error('JWT access token expiration is not configured (JWT_ACCESS_TOKEN_EXPIRATION)')
-    }
-    if (!refreshTokenSecret) {
-      throw new Error('JWT refresh token secret is not configured (JWT_REFRESH_TOKEN_SECRET)')
-    }
-    if (!refreshTokenExpiration) {
-      throw new Error(
-        'JWT refresh token expiration is not configured (JWT_REFRESH_TOKEN_EXPIRATION)',
-      )
-    }
-
-    this.accessTokenSecret = accessTokenSecret
-    this.accessTokenExpiration = accessTokenExpiration
-    this.refreshTokenSecret = refreshTokenSecret
-    this.refreshTokenExpiration = refreshTokenExpiration
+    this.accessTokenSecret = this.configService.getOrThrow<string>('jwt.access.secret')
+    this.accessTokenExpiration = this.configService.getOrThrow<string>('jwt.access.expiresIn')
+    this.refreshTokenSecret = this.configService.getOrThrow<string>('jwt.refresh.secret')
+    this.refreshTokenExpiration = this.configService.getOrThrow<string>('jwt.refresh.expiresIn')
 
     // Конвертируем время жизни refresh токена в секунды для Redis
     this.refreshTokenTTL = this.parseExpirationToSeconds(this.refreshTokenExpiration)
@@ -95,7 +73,7 @@ export class TokenService {
 
     return this.jwtService.sign(payload, {
       secret: this.accessTokenSecret,
-      expiresIn: this.accessTokenExpiration,
+      expiresIn: this.anonymousTokenExpiration, // Используем отдельное время жизни
     })
   }
 
@@ -138,7 +116,7 @@ export class TokenService {
     return savedToken === refreshToken
   }
 
-  private parseExpirationToSeconds(expiration: string): number {
+  parseExpirationToSeconds(expiration: string): number {
     const match = expiration.match(/^(\d+)([smhd])$/)
     if (!match) {
       throw new Error(`Invalid expiration format: ${expiration}`)
@@ -159,5 +137,9 @@ export class TokenService {
       default:
         throw new Error(`Unknown time unit: ${unit}`)
     }
+  }
+
+  getAnonymousTokenExpiration(): number {
+    return this.parseExpirationToSeconds(this.anonymousTokenExpiration)
   }
 }

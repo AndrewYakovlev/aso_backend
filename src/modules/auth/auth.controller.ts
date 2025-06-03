@@ -23,6 +23,7 @@ import { AnonymousAuthGuard } from './guards/anonymous-auth.guard'
 import { CurrentUser } from './decorators/current-user.decorator'
 import { RateLimit } from '@common/decorators/rate-limit.decorator'
 import { UserResponseDto } from '../users/dto/user-response.dto'
+import { Public } from './decorators'
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -36,6 +37,7 @@ export class AuthController {
     description: 'Анонимный токен успешно создан',
     type: AnonymousTokenDto,
   })
+  @Public()
   async getAnonymousToken(
     @Headers('user-agent') userAgent: string,
     @Req() req: any,
@@ -45,6 +47,7 @@ export class AuthController {
   }
 
   @Get('verify-anonymous')
+  @Public()
   @UseGuards(AnonymousAuthGuard)
   @ApiOperation({ summary: 'Проверка анонимного токена' })
   @ApiBearerAuth()
