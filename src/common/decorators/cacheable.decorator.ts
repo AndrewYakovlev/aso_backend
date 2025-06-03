@@ -8,16 +8,21 @@ export interface CacheOptions {
   condition?: (...args: any[]) => boolean
 }
 
+interface CacheableTarget {
+  redisService?: RedisService
+}
+
 export function Cacheable(options: CacheOptions = {}) {
   const injectRedis = Inject(RedisService)
 
   return function (target: any, propertyKey: string, descriptor: PropertyDescriptor) {
+    // Инжектим RedisService в класс
     injectRedis(target, 'redisService')
 
     const originalMethod = descriptor.value
 
-    descriptor.value = async function (...args: any[]) {
-      const redisService = this.redisService as RedisService
+    descriptor.value = async function (this: CacheableTarget, ...args: any[]) {
+      const redisService = this.redisService
 
       if (!redisService) {
         console.warn('RedisService not found, executing method without cache')
@@ -74,12 +79,13 @@ export function CacheEvict(options: {
   const injectRedis = Inject(RedisService)
 
   return function (target: any, propertyKey: string, descriptor: PropertyDescriptor) {
+    // Инжектим RedisService в класс
     injectRedis(target, 'redisService')
 
     const originalMethod = descriptor.value
 
-    descriptor.value = async function (...args: any[]) {
-      const redisService = this.redisService as RedisService
+    descriptor.value = async function (this: CacheableTarget, ...args: any[]) {
+      const redisService = this.redisService
 
       if (!redisService) {
         console.warn('RedisService not found, executing method without cache eviction')

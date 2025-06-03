@@ -3,7 +3,7 @@ import { Injectable } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { HttpService } from '@nestjs/axios'
 import { firstValueFrom } from 'rxjs'
-import { LoggerService } from '@logger/logger.service'
+import { LoggerService } from '../../../logger/logger.service'
 
 export interface SmsResponse {
   status: string

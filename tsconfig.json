@@ -1,4 +1,3 @@
-// tsconfig.json
 {
   "compilerOptions": {
     "module": "commonjs",
@@ -10,7 +9,7 @@
     "target": "ES2022",
     "sourceMap": true,
     "outDir": "./dist",
-    "baseUrl": "./",
+    "baseUrl": "./src",
     "incremental": true,
     "skipLibCheck": true,
     "strict": true,
@@ -22,12 +21,15 @@
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "paths": {
-      "@modules/*": ["src/modules/*"],
-      "@common/*": ["src/common/*"],
-      "@config/*": ["src/config/*"],
-      "@prisma/*": ["src/prisma/*"]
+      "@modules/*": ["modules/*"],
+      "@common/*": ["common/*"],
+      "@config/*": ["config/*"],
+      "@prisma/*": ["prisma/*"],
+      "@logger/*": ["logger/*"],
+      "@redis/*": ["redis/*"],
+      "@health/*": ["health/*"]
     }
   },
-  "include": ["src/**/*", "test/test.utils.ts"],
-  "exclude": ["node_modules", "dist", "test", "**/*spec.ts"]
+  "include": ["src/**/*", "test/**/*"],
+  "exclude": ["node_modules", "dist"]
 }

@@ -11,10 +11,15 @@ import { StringUtil } from '@common/utils/string.util'
 import { PrismaErrorHelper } from '@common/helpers/prisma-error.helper'
 import { Cacheable, CacheEvict } from '@common/decorators/cacheable.decorator'
 import { CacheKeys, CacheTTL } from '../../redis/redis.constants'
+import { RedisService } from '../../redis/redis.service'
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  // Добавляем RedisService в конструктор
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly redisService: RedisService,
+  ) {}
 
   async create(createUserDto: CreateUserDto): Promise<User> {
     try {

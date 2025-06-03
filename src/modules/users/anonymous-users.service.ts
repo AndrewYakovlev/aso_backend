@@ -70,7 +70,9 @@ export class AnonymousUsersService {
     // Переносим корзину анонимного пользователя к зарегистрированному
     await this.prisma.cart.updateMany({
       where: {
-        anonymousId: sessionId,
+        anonymousUser: {
+          sessionId,
+        },
         userId: null,
       },
       data: {
@@ -82,7 +84,9 @@ export class AnonymousUsersService {
     // Переносим чаты
     await this.prisma.chat.updateMany({
       where: {
-        anonymousId: sessionId,
+        anonymousUser: {
+          sessionId,
+        },
         userId: null,
       },
       data: {
@@ -94,7 +98,9 @@ export class AnonymousUsersService {
     // Переносим историю просмотров
     await this.prisma.viewHistory.updateMany({
       where: {
-        anonymousId: sessionId,
+        anonymousUser: {
+          sessionId,
+        },
         userId: null,
       },
       data: {
