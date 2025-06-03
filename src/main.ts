@@ -1,22 +1,28 @@
 // src/main.ts
 import { NestFactory } from '@nestjs/core'
 import { AppModule } from './app.module'
-import { ValidationPipe, VersioningType, Logger } from '@nestjs/common'
+import { ValidationPipe, VersioningType } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger'
 import helmet from 'helmet'
 import compression from 'compression'
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter'
 import { ResponseInterceptor } from './common/interceptors/response.interceptor'
+import { LoggerService } from './logger/logger.service'
+import { PrismaService } from './prisma/prisma.service'
 
 async function bootstrap() {
-  const logger = new Logger('Bootstrap')
-
   const app = await NestFactory.create(AppModule, {
-    logger: ['error', 'warn', 'debug', 'log', 'verbose'],
+    bufferLogs: true,
   })
 
+  // Get services
   const configService = app.get(ConfigService)
+  const logger = app.get(LoggerService)
+
+  // Use custom logger
+  app.useLogger(logger)
+
   const port = configService.get<number>('app.port', 4000)
   const apiPrefix = configService.get<string>('app.apiPrefix', 'api')
   const apiVersion = configService.get<string>('app.apiVersion', 'v1')
@@ -68,11 +74,21 @@ async function bootstrap() {
 
     logger.log(
       `Swagger documentation available at: http://localhost:${port}/${apiPrefix}/${swaggerPath}`,
+      'Bootstrap',
     )
   }
 
+  // Enable shutdown hooks
+  const prismaService = app.get(PrismaService)
+  if (prismaService && prismaService.enableShutdownHooks) {
+    await prismaService.enableShutdownHooks(app)
+  }
+
   await app.listen(port)
-  logger.log(`Application is running on: http://localhost:${port}/${apiPrefix}/${apiVersion}`)
+  logger.log(
+    `Application is running on: http://localhost:${port}/${apiPrefix}/${apiVersion}`,
+    'Bootstrap',
+  )
 }
 
 bootstrap()

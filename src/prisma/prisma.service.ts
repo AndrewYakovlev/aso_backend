@@ -9,9 +9,13 @@ export class PrismaService
   implements OnModuleInit, OnModuleDestroy
 {
   private readonly logger = new Logger(PrismaService.name)
+  private readonly retryAttempts: number
+  private readonly retryDelay: number
 
   constructor(private configService: ConfigService) {
     const logging = configService.get<boolean>('database.logging', false)
+    const retryAttempts = configService.get<number>('database.retryAttempts', 5)
+    const retryDelay = configService.get<number>('database.retryDelay', 3000)
 
     super({
       log: logging
@@ -25,26 +29,58 @@ export class PrismaService
       errorFormat: 'minimal',
     })
 
+    this.retryAttempts = retryAttempts
+    this.retryDelay = retryDelay
+
     if (logging) {
       this.$on('query', (e: Prisma.QueryEvent) => {
         this.logger.debug(`Query: ${e.query} - Params: ${e.params} - Duration: ${e.duration}ms`)
       })
     }
+
+    this.$on('error', (e: Prisma.LogEvent) => {
+      this.logger.error(`Prisma error: ${e.message}`)
+    })
+
+    this.$on('info', (e: Prisma.LogEvent) => {
+      this.logger.log(`Prisma info: ${e.message}`)
+    })
+
+    this.$on('warn', (e: Prisma.LogEvent) => {
+      this.logger.warn(`Prisma warning: ${e.message}`)
+    })
   }
 
   async onModuleInit() {
-    try {
-      await this.$connect()
-      this.logger.log('Prisma connected to database')
-    } catch (error) {
-      this.logger.error('Failed to connect to database', error)
-      throw error
+    let attempt = 0
+    while (attempt < this.retryAttempts) {
+      try {
+        await this.$connect()
+        this.logger.log('Prisma connected to database')
+        return
+      } catch (error) {
+        attempt++
+        this.logger.error(
+          `Failed to connect to database (attempt ${attempt}/${this.retryAttempts})`,
+          error,
+        )
+        if (attempt === this.retryAttempts) {
+          throw error
+        }
+        await new Promise((resolve) => setTimeout(resolve, this.retryDelay))
+      }
     }
   }
 
   async onModuleDestroy() {
     await this.$disconnect()
     this.logger.log('Prisma disconnected from database')
+  }
+
+  async enableShutdownHooks(app: any) {
+    process.on('beforeExit', async () => {
+      await app.close()
+    })
   }
 
   async cleanDatabase() {
@@ -92,5 +128,26 @@ export class PrismaService
       this.anonymousUser.deleteMany(),
       this.user.deleteMany(),
     ])
+  }
+
+  // Утилиты для обработки ошибок Prisma
+  isPrismaError(error: any): error is Prisma.PrismaClientKnownRequestError {
+    return error instanceof Prisma.PrismaClientKnownRequestError
+  }
+
+  handlePrismaError(error: any): never {
+    if (this.isPrismaError(error)) {
+      switch (error.code) {
+        case 'P2002':
+          throw new Error(`Unique constraint violation on ${error.meta?.target}`)
+        case 'P2003':
+          throw new Error(`Foreign key constraint violation on ${error.meta?.field_name}`)
+        case 'P2025':
+          throw new Error('Record not found')
+        default:
+          throw new Error(`Database error: ${error.message}`)
+      }
+    }
+    throw error
   }
 }
