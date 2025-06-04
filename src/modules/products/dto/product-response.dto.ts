@@ -132,6 +132,21 @@ export class ProductResponseDto {
   @Exclude()
   deletedAt?: Date | null
 
+  // SEO поля
+  @ApiPropertyOptional()
+  metaTitle?: string | null
+
+  @ApiPropertyOptional()
+  metaDescription?: string | null
+
+  @ApiPropertyOptional()
+  metaKeywords?: string | null
+
+  @ApiPropertyOptional({
+    description: 'Canonical URL товара',
+  })
+  canonicalUrl?: string
+
   @ApiProperty({ type: [ProductCategoryResponseDto] })
   @Type(() => ProductCategoryResponseDto)
   categories!: ProductCategoryResponseDto[]
@@ -185,6 +200,8 @@ export class ProductResponseDto {
         value: pc.value || pc.characteristicValue?.value || '',
         displayValue: pc.characteristicValue?.value || pc.value || '',
       })),
+      // Генерируем canonical URL
+      canonicalUrl: `/product/${product.slug}`,
     }
 
     // Вычисляем процент скидки
@@ -236,6 +253,9 @@ export class ProductListItemDto {
   @ApiPropertyOptional()
   discountPercent?: number
 
+  @ApiPropertyOptional()
+  canonicalUrl?: string
+
   static fromEntity(
     product: Partial<ProductWithRelations> & {
       id: string
@@ -259,6 +279,7 @@ export class ProductListItemDto {
       brand: product.brand,
       isOriginal: product.isOriginal,
       primaryImage: product.images?.[0],
+      canonicalUrl: `/product/${product.slug}`,
     }
 
     // Процент скидки

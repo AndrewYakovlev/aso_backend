@@ -178,4 +178,36 @@ export class CreateProductDto {
   @ValidateNested({ each: true })
   @Type(() => CreateProductImageDto)
   images?: CreateProductImageDto[]
+
+  // SEO поля
+  @ApiPropertyOptional({
+    description: 'SEO заголовок страницы (автогенерируется из названия если не указан)',
+    example: 'Моторное масло Castrol EDGE 5W-40 - купить в Бежецке | Автозапчасти АСО',
+    maxLength: 160,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  metaTitle?: string
+
+  @ApiPropertyOptional({
+    description: 'SEO описание страницы (автогенерируется из описания если не указано)',
+    example:
+      'Купить моторное масло Castrol EDGE 5W-40 по выгодной цене. В наличии. Доставка по Бежецку. Гарантия качества.',
+    maxLength: 300,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  metaDescription?: string
+
+  @ApiPropertyOptional({
+    description: 'SEO ключевые слова (автогенерируются из названия и бренда если не указаны)',
+    example: 'castrol edge 5w-40, моторное масло castrol, купить масло 5w40, кастрол 5в40',
+    maxLength: 300,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  metaKeywords?: string
 }

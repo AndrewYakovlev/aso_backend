@@ -15,6 +15,7 @@ import { CacheKeys, CacheTTL } from '../../redis/redis.constants'
 import { RedisService } from '../../redis/redis.service'
 import { CategoryBreadcrumbDto } from './dto/category-response.dto'
 import { CategoryWithRelations } from './interfaces/category.interface'
+import { SeoUtil } from '@common/utils/seo.util'
 
 @Injectable()
 export class CategoriesService {
@@ -35,17 +36,29 @@ export class CategoriesService {
       }
 
       // Проверяем существование родительской категории
+      let parentCategory: Category | null = null
       if (createCategoryDto.parentId) {
-        const parentCategory = await this.findById(createCategoryDto.parentId)
+        parentCategory = await this.findById(createCategoryDto.parentId)
         if (!parentCategory) {
           throw new NotFoundException('Родительская категория не найдена')
         }
       }
 
+      // Автогенерация SEO полей если не указаны
+      const seoData = this.generateSeoData(
+        createCategoryDto.name,
+        createCategoryDto.description,
+        parentCategory?.name,
+        createCategoryDto,
+      )
+
       const category = await this.prisma.category.create({
         data: {
           ...createCategoryDto,
           parentId: createCategoryDto.parentId || null,
+          metaTitle: seoData.metaTitle,
+          metaDescription: seoData.metaDescription,
+          metaKeywords: seoData.metaKeywords,
         },
         include: {
           parent: true,
@@ -283,9 +296,27 @@ export class CategoriesService {
         }
       }
 
+      // Автогенерация SEO полей если не указаны
+      const parentCategory = updateCategoryDto.parentId
+        ? await this.findById(updateCategoryDto.parentId)
+        : category.parent
+
+      const seoData = this.generateSeoData(
+        updateCategoryDto.name || category.name,
+        updateCategoryDto.description || category.description,
+        parentCategory?.name,
+        updateCategoryDto,
+        category,
+      )
+
       const updatedCategory = await this.prisma.category.update({
         where: { id },
-        data: updateCategoryDto,
+        data: {
+          ...updateCategoryDto,
+          metaTitle: seoData.metaTitle,
+          metaDescription: seoData.metaDescription,
+          metaKeywords: seoData.metaKeywords,
+        },
         include: {
           parent: true,
           children: {
@@ -391,6 +422,34 @@ export class CategoriesService {
         },
       },
     })
+  }
+
+  /**
+   * Генерация SEO данных для категории
+   */
+  private generateSeoData(
+    name: string,
+    description?: string | null,
+    parentName?: string | null,
+    dto?: Partial<CreateCategoryDto | UpdateCategoryDto>,
+    existingCategory?: Category | null,
+  ): {
+    metaTitle: string
+    metaDescription: string
+    metaKeywords: string
+  } {
+    return {
+      metaTitle:
+        dto?.metaTitle || existingCategory?.metaTitle || SeoUtil.generateCategoryMetaTitle(name),
+      metaDescription:
+        dto?.metaDescription ||
+        existingCategory?.metaDescription ||
+        SeoUtil.generateCategoryMetaDescription(name, description),
+      metaKeywords:
+        dto?.metaKeywords ||
+        existingCategory?.metaKeywords ||
+        SeoUtil.generateCategoryMetaKeywords(name, parentName),
+    }
   }
 
   private async enrichCategoryWithProductCount(category: CategoryWithRelations): Promise<void> {

@@ -31,6 +31,16 @@ export class CategoryResponseDto {
   @Exclude()
   deletedAt?: Date | null
 
+  // SEO поля
+  @ApiPropertyOptional()
+  metaTitle?: string | null
+
+  @ApiPropertyOptional()
+  metaDescription?: string | null
+
+  @ApiPropertyOptional()
+  metaKeywords?: string | null
+
   @ApiPropertyOptional({ type: CategoryResponseDto })
   @Type(() => CategoryResponseDto)
   parent?: CategoryResponseDto | null
@@ -49,6 +59,11 @@ export class CategoryResponseDto {
   })
   totalProductCount?: number
 
+  @ApiPropertyOptional({
+    description: 'Canonical URL категории',
+  })
+  canonicalUrl?: string
+
   static fromEntity(category: CategoryWithRelations): CategoryResponseDto {
     const plain = {
       ...category,
@@ -59,6 +74,8 @@ export class CategoryResponseDto {
       children: category.children?.map((child) => CategoryResponseDto.fromEntity(child)),
       productCount: category._count?.products || category.productCount || 0,
       totalProductCount: category.totalProductCount,
+      // Генерируем canonical URL
+      canonicalUrl: `/catalog/${category.slug}`,
     }
 
     return plainToInstance(CategoryResponseDto, plain)
@@ -76,6 +93,7 @@ export class CategoryTreeResponseDto extends CategoryResponseDto {
       children: category.children?.map((child) => CategoryTreeResponseDto.fromEntity(child)) || [],
       productCount: category._count?.products || category.productCount || 0,
       totalProductCount: category.totalProductCount,
+      canonicalUrl: `/catalog/${category.slug}`,
     }
 
     return plainToInstance(CategoryTreeResponseDto, plain)

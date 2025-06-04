@@ -57,4 +57,36 @@ export class CreateCategoryDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean
+
+  // SEO поля
+  @ApiPropertyOptional({
+    description: 'SEO заголовок страницы (автогенерируется из названия если не указан)',
+    example: 'Масла и технические жидкости - купить в интернет-магазине Автозапчасти АСО',
+    maxLength: 160,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  metaTitle?: string
+
+  @ApiPropertyOptional({
+    description: 'SEO описание страницы (автогенерируется из описания если не указано)',
+    example:
+      'Большой выбор моторных масел, трансмиссионных жидкостей и антифризов. Доставка по Бежецку. Гарантия качества.',
+    maxLength: 300,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  metaDescription?: string
+
+  @ApiPropertyOptional({
+    description: 'SEO ключевые слова (автогенерируются из названия если не указаны)',
+    example: 'моторное масло, трансмиссионная жидкость, антифриз, купить масло бежецк',
+    maxLength: 300,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  metaKeywords?: string
 }
