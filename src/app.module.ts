@@ -8,6 +8,8 @@ import { LoggerModule } from './logger/logger.module'
 import { HealthModule } from './health/health.module'
 import { AuthModule } from './modules/auth/auth.module'
 import { UsersModule } from './modules/users/users.module'
+import { CategoriesModule } from './modules/categories/categories.module'
+import { ProductsModule } from './modules/products/products.module'
 import configuration from './config/configuration'
 import { validationSchema } from './config/validation.schema'
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter'
@@ -32,9 +34,9 @@ import { LoggerMiddleware } from './common/middleware/logger.middleware'
     HealthModule,
     AuthModule,
     UsersModule,
+    CategoriesModule,
+    ProductsModule,
     // Здесь будут подключаться остальные модули:
-    // ProductsModule,
-    // CategoriesModule,
     // OrdersModule,
     // CartModule,
     // ChatModule,
@@ -51,7 +53,6 @@ import { LoggerMiddleware } from './common/middleware/logger.middleware'
       provide: APP_INTERCEPTOR,
       useClass: ResponseInterceptor,
     },
-    // Убираем глобальный JwtAuthGuard
   ],
 })
 export class AppModule implements NestModule {

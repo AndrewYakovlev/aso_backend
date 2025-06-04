@@ -1,0 +1,91 @@
+// src/modules/categories/dto/category-response.dto.ts
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
+import { Exclude, Type, plainToInstance } from 'class-transformer'
+import { CategoryWithRelations } from '../interfaces/category.interface'
+
+export class CategoryResponseDto {
+  @ApiProperty()
+  id!: string
+
+  @ApiProperty()
+  name!: string
+
+  @ApiProperty()
+  slug!: string
+
+  @ApiPropertyOptional()
+  description?: string
+
+  @ApiPropertyOptional()
+  parentId?: string
+
+  @ApiProperty()
+  sortOrder!: number
+
+  @ApiProperty()
+  isActive!: boolean
+
+  @ApiProperty()
+  createdAt!: Date
+
+  @Exclude()
+  deletedAt?: Date
+
+  @ApiPropertyOptional({ type: CategoryResponseDto })
+  @Type(() => CategoryResponseDto)
+  parent?: CategoryResponseDto
+
+  @ApiPropertyOptional({ type: [CategoryResponseDto] })
+  @Type(() => CategoryResponseDto)
+  children?: CategoryResponseDto[]
+
+  @ApiPropertyOptional({
+    description: 'Количество товаров в категории',
+  })
+  productCount?: number
+
+  @ApiPropertyOptional({
+    description: 'Количество товаров включая подкатегории',
+  })
+  totalProductCount?: number
+
+  static fromEntity(category: CategoryWithRelations): CategoryResponseDto {
+    const plain = {
+      ...category,
+      parent: category.parent ? CategoryResponseDto.fromEntity(category.parent) : undefined,
+      children: category.children?.map((child) => CategoryResponseDto.fromEntity(child)),
+      productCount: category._count?.products || category.productCount || 0,
+      totalProductCount: category.totalProductCount,
+    }
+
+    return plainToInstance(CategoryResponseDto, plain)
+  }
+}
+
+export class CategoryTreeResponseDto extends CategoryResponseDto {
+  @ApiProperty({ type: [CategoryTreeResponseDto] })
+  @Type(() => CategoryTreeResponseDto)
+  children!: CategoryTreeResponseDto[]
+
+  static fromEntity(category: CategoryWithRelations): CategoryTreeResponseDto {
+    const plain = {
+      ...category,
+      children: category.children?.map((child) => CategoryTreeResponseDto.fromEntity(child)) || [],
+      productCount: category._count?.products || category.productCount || 0,
+      totalProductCount: category.totalProductCount,
+    }
+
+    return plainToInstance(CategoryTreeResponseDto, plain)
+  }
+}
+
+export class CategoryBreadcrumbDto {
+  @ApiProperty()
+  id!: string
+
+  @ApiProperty()
+  name!: string
+
+  @ApiProperty()
+  slug!: string
+}

@@ -74,6 +74,10 @@ model Category {
   createdAt   DateTime   @default(now())
   deletedAt   DateTime?
 
+  metaTitle       String?
+  metaDescription String?
+  metaKeywords    String?
+
   products        ProductCategory[]
   characteristics Characteristic[]
   viewHistory     ViewHistory[]
@@ -101,6 +105,10 @@ model Product {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
   deletedAt        DateTime?
+
+  metaTitle       String?
+  metaDescription String?
+  metaKeywords    String?
 
   categories          ProductCategory[]
   images              ProductImage[]

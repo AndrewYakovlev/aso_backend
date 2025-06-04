@@ -1,0 +1,13 @@
+// src/modules/products/index.ts
+export * from './products.module'
+export * from './products.controller'
+export * from './products.service'
+export * from './brands.service'
+export * from './dto/create-product.dto'
+export * from './dto/update-product.dto'
+export * from './dto/create-brand.dto'
+export * from './dto/update-brand.dto'
+export * from './dto/products-filter.dto'
+export * from './dto/product-response.dto'
+export * from './interfaces/product.interface'
+export * from './interfaces/brand.interface'
