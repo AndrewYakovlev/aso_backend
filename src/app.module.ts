@@ -11,6 +11,8 @@ import { UsersModule } from './modules/users/users.module'
 import { CategoriesModule } from './modules/categories/categories.module'
 import { ProductsModule } from './modules/products/products.module'
 import { CharacteristicsModule } from './modules/characteristics/characteristics.module'
+import { VehiclesModule } from './modules/vehicles/vehicles.module'
+import { SeoModule } from './modules/seo/seo.module'
 import configuration from './config/configuration'
 import { validationSchema } from './config/validation.schema'
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter'
@@ -38,11 +40,12 @@ import { LoggerMiddleware } from './common/middleware/logger.middleware'
     CategoriesModule,
     ProductsModule,
     CharacteristicsModule,
+    VehiclesModule,
+    SeoModule,
     // Здесь будут подключаться остальные модули:
     // OrdersModule,
     // CartModule,
     // ChatModule,
-    // VehiclesModule,
     // AdminModule,
     // ImportModule,
   ],

@@ -236,10 +236,13 @@ model ProductCharacteristic {
 model VehicleMake {
   id      String  @id @default(cuid())
   name    String
+  slug    String  @unique
   country String?
   logoUrl String?
 
   models VehicleModel[]
+
+  @@index([slug])
 }
 
 model VehicleModel {
@@ -247,6 +250,7 @@ model VehicleModel {
   makeId    String
   make      VehicleMake @relation(fields: [makeId], references: [id])
   name      String
+  slug      String      @unique
   modelCode String?
   startYear Int
   endYear   Int?
@@ -254,6 +258,7 @@ model VehicleModel {
   generations VehicleGeneration[]
 
   @@index([makeId])
+  @@index([slug])
 }
 
 model VehicleGeneration {
@@ -261,6 +266,7 @@ model VehicleGeneration {
   modelId   String
   model     VehicleModel @relation(fields: [modelId], references: [id])
   name      String
+  slug      String       @unique
   startYear Int
   endYear   Int?
   bodyType  String?
@@ -268,12 +274,14 @@ model VehicleGeneration {
   modifications VehicleModification[]
 
   @@index([modelId])
+  @@index([slug])
 }
 
 model VehicleModification {
   id           String            @id @default(cuid())
   generationId String
   generation   VehicleGeneration @relation(fields: [generationId], references: [id])
+  name         String
   engineCode   String?
   fuelType     String?
   powerHp      Int?
@@ -282,6 +290,7 @@ model VehicleModification {
   applications VehicleApplication[]
 
   @@index([generationId])
+  @@index([name])
 }
 
 // Связь товаров с автомобилями
