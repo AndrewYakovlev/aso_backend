@@ -21,6 +21,8 @@ import { CategoriesService } from '../categories/categories.service'
 import { ProductWithRelations } from './interfaces/product.interface'
 import { SetProductCharacteristicDto } from '../characteristics/dto/characteristic-value.dto'
 import { CharacteristicsService } from '../characteristics/characteristics.service'
+import { ProductFiltersService } from './services/product-filters.service'
+import { ExtendedProductFiltersDto } from './dto/product-filters.dto'
 
 @Injectable()
 export class ProductsService {
@@ -29,6 +31,7 @@ export class ProductsService {
     private readonly redisService: RedisService,
     private readonly categoriesService: CategoriesService,
     private readonly characteristicsService: CharacteristicsService,
+    private readonly productFiltersService: ProductFiltersService, // Добавить эту строку
   ) {}
 
   async create(createProductDto: CreateProductDto): Promise<ProductWithRelations> {
@@ -132,14 +135,19 @@ export class ProductsService {
 
   async findAll(
     paginationDto: PaginationDto,
-    filterDto: ProductsFilterDto,
+    filterDto: ProductsFilterDto | ExtendedProductFiltersDto,
   ): Promise<PaginatedResult<ProductWithRelations>> {
     const { page, limit } = PaginationUtil.validatePagination(
       paginationDto.page,
       paginationDto.limit,
     )
 
-    const where = this.buildWhereClause(filterDto)
+    // Используем новый сервис для построения WHERE условий
+    const where =
+      filterDto instanceof ExtendedProductFiltersDto || (filterDto as any).characteristics
+        ? await this.productFiltersService.buildWhereClause(filterDto as ExtendedProductFiltersDto)
+        : this.buildWhereClause(filterDto as ProductsFilterDto)
+
     const orderBy = this.buildOrderByClause(filterDto)
 
     const [products, total] = await Promise.all([
@@ -164,7 +172,7 @@ export class ProductsService {
   async findByCategory(
     categoryId: string,
     paginationDto: PaginationDto,
-    filterDto: ProductsFilterDto,
+    filterDto: ProductsFilterDto | ExtendedProductFiltersDto,
   ): Promise<PaginatedResult<ProductWithRelations>> {
     // Получаем все подкатегории
     const categoryIds = await this.categoriesService.getAllSubcategoryIds(categoryId)
@@ -175,7 +183,7 @@ export class ProductsService {
       categoryIds: categoryIds,
     }
 
-    return this.findAll(paginationDto, extendedFilter)
+    return this.findAll(paginationDto, extendedFilter as ExtendedProductFiltersDto)
   }
 
   @CacheEvict({

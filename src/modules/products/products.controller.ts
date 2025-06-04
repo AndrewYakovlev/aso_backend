@@ -30,6 +30,9 @@ import { RequireRoles } from '../auth/decorators/require-roles.decorator'
 import { UserRole } from '@prisma/client'
 import { PaginationDto } from '@common/dto/pagination.dto'
 import { SetProductCharacteristicDto } from '../characteristics/dto/characteristic-value.dto'
+import { ProductFiltersService } from './services/product-filters.service'
+import { ExtendedProductFiltersDto, GetFiltersDto } from './dto/product-filters.dto'
+import { AvailableFilters } from './interfaces/filter.interface'
 
 @ApiTags('Products')
 @Controller('products')
@@ -37,6 +40,7 @@ export class ProductsController {
   constructor(
     private readonly productsService: ProductsService,
     private readonly brandsService: BrandsService,
+    private readonly productFiltersService: ProductFiltersService,
   ) {}
 
   @Post()
@@ -53,12 +57,15 @@ export class ProductsController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'Получить список товаров' })
+  @ApiOperation({ summary: 'Получить список товаров с расширенной фильтрацией' })
   @ApiResponse({
     status: 200,
     description: 'Список товаров',
   })
-  async findAll(@Query() paginationDto: PaginationDto, @Query() filterDto: ProductsFilterDto) {
+  async findAll(
+    @Query() paginationDto: PaginationDto,
+    @Query() filterDto: ExtendedProductFiltersDto,
+  ) {
     const result = await this.productsService.findAll(paginationDto, filterDto)
 
     return {
@@ -68,7 +75,7 @@ export class ProductsController {
   }
 
   @Get('search')
-  @ApiOperation({ summary: 'Поиск товаров' })
+  @ApiOperation({ summary: 'Полнотекстовый поиск товаров' })
   @ApiQuery({
     name: 'q',
     required: true,
@@ -78,11 +85,18 @@ export class ProductsController {
     status: 200,
     description: 'Результаты поиска',
   })
-  async search(@Query('q') query: string, @Query() paginationDto: PaginationDto) {
-    const filterDto = new ProductsFilterDto()
-    filterDto.search = query
+  async search(
+    @Query('q') query: string,
+    @Query() paginationDto: PaginationDto,
+    @Query() filterDto: ExtendedProductFiltersDto, // Добавить параметр фильтров
+  ) {
+    // Объединяем поисковый запрос с фильтрами
+    const searchFilter = {
+      ...filterDto,
+      search: query,
+    }
 
-    const result = await this.productsService.findAll(paginationDto, filterDto)
+    const result = await this.productsService.findAll(paginationDto, searchFilter)
 
     return {
       ...result,
@@ -92,7 +106,7 @@ export class ProductsController {
   }
 
   @Get('category/:categoryId')
-  @ApiOperation({ summary: 'Получить товары категории' })
+  @ApiOperation({ summary: 'Получить товары категории с расширенной фильтрацией' })
   @ApiResponse({
     status: 200,
     description: 'Товары категории',
@@ -100,7 +114,7 @@ export class ProductsController {
   async findByCategory(
     @Param('categoryId') categoryId: string,
     @Query() paginationDto: PaginationDto,
-    @Query() filterDto: ProductsFilterDto,
+    @Query() filterDto: ExtendedProductFiltersDto, // Изменить тип на ExtendedProductFiltersDto
   ) {
     const result = await this.productsService.findByCategory(categoryId, paginationDto, filterDto)
 
@@ -332,5 +346,35 @@ export class ProductsController {
     @Body() characteristics: SetProductCharacteristicDto[],
   ): Promise<void> {
     await this.productsService.setProductCharacteristics(id, characteristics)
+  }
+
+  @Get('filters')
+  @ApiOperation({ summary: 'Получить доступные фильтры товаров' })
+  @ApiResponse({
+    status: 200,
+    description: 'Доступные фильтры с количеством товаров',
+  })
+  async getAvailableFilters(@Query() getFiltersDto: GetFiltersDto): Promise<AvailableFilters> {
+    return this.productFiltersService.getAvailableFilters(getFiltersDto)
+  }
+
+  @Get('category/:categoryId/filters')
+  @ApiOperation({ summary: 'Получить доступные фильтры для категории' })
+  @ApiParam({
+    name: 'categoryId',
+    description: 'ID категории',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Доступные фильтры для категории',
+  })
+  async getCategoryFilters(
+    @Param('categoryId') categoryId: string,
+    @Query() getFiltersDto: GetFiltersDto,
+  ): Promise<AvailableFilters> {
+    return this.productFiltersService.getAvailableFilters({
+      ...getFiltersDto,
+      categoryId,
+    })
   }
 }
