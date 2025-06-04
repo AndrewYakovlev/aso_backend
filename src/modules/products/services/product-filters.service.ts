@@ -309,18 +309,18 @@ export class ProductFiltersService {
     const brandMap = new Map(brands.map((b) => [b.id, b]))
 
     const values: FilterValue[] = brandsWithCount
-      .map((item) => {
+      .reduce<FilterValue[]>((acc, item) => {
         const brand = brandMap.get(item.brandId)
-        if (!brand) return null
-
-        return {
-          value: item.brandId,
-          label: brand.name,
-          count: item._count.id,
-          selected: selectedBrandIds?.includes(item.brandId),
+        if (brand) {
+          acc.push({
+            value: item.brandId,
+            label: brand.name,
+            count: item._count.id,
+            selected: selectedBrandIds?.includes(item.brandId),
+          })
         }
-      })
-      .filter((item): item is FilterValue => item !== null)
+        return acc
+      }, [])
       .sort((a, b) => b.count - a.count)
 
     return {
@@ -419,21 +419,21 @@ export class ProductFiltersService {
     })
 
     const values: FilterValue[] = valuesWithCount
-      .map((item) => {
-        if (!item.characteristicValueId) return null
-
-        const charValue = characteristic.values?.find(
-          (v: any) => v.id === item.characteristicValueId,
-        )
-        if (!charValue) return null
-
-        return {
-          value: item.characteristicValueId,
-          label: charValue.value,
-          count: item._count.id,
+      .reduce<FilterValue[]>((acc, item) => {
+        if (item.characteristicValueId) {
+          const charValue = characteristic.values?.find(
+            (v: any) => v.id === item.characteristicValueId,
+          )
+          if (charValue) {
+            acc.push({
+              value: item.characteristicValueId,
+              label: charValue.value,
+              count: item._count.id,
+            })
+          }
         }
-      })
-      .filter((item): item is FilterValue => item !== null)
+        return acc
+      }, [])
       .sort((a, b) => a.label.localeCompare(b.label))
 
     return {
@@ -507,16 +507,16 @@ export class ProductFiltersService {
     })
 
     const values: FilterValue[] = valuesWithCount
-      .map((item) => {
-        if (!item.value) return null
-
-        return {
-          value: item.value,
-          label: characteristic.unit ? `${item.value} ${characteristic.unit}` : item.value,
-          count: item._count.id,
+      .reduce<FilterValue[]>((acc, item) => {
+        if (item.value) {
+          acc.push({
+            value: item.value,
+            label: characteristic.unit ? `${item.value} ${characteristic.unit}` : item.value,
+            count: item._count.id,
+          })
         }
-      })
-      .filter((item): item is FilterValue => item !== null)
+        return acc
+      }, [])
       .sort((a, b) => {
         const numA = parseFloat(a.value)
         const numB = parseFloat(b.value)
@@ -612,17 +612,16 @@ export class ProductFiltersService {
       take: 20, // Ограничиваем количество значений для текстовых характеристик
     })
 
-    const values: FilterValue[] = valuesWithCount
-      .map((item) => {
-        if (!item.value) return null
-
-        return {
+    const values: FilterValue[] = valuesWithCount.reduce<FilterValue[]>((acc, item) => {
+      if (item.value) {
+        acc.push({
           value: item.value,
           label: item.value,
           count: item._count.id,
-        }
-      })
-      .filter((item): item is FilterValue => item !== null)
+        })
+      }
+      return acc
+    }, [])
 
     return {
       field: `char_${characteristic.id}`,
