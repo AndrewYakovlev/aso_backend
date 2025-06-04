@@ -11,8 +11,9 @@ import {
   HttpCode,
   HttpStatus,
   NotFoundException,
+  Put,
 } from '@nestjs/common'
-import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger'
+import { ApiTags, ApiOperation, ApiResponse, ApiQuery, ApiParam } from '@nestjs/swagger'
 import { ProductsService } from './products.service'
 import { BrandsService } from './brands.service'
 import { CreateProductDto } from './dto/create-product.dto'
@@ -28,6 +29,7 @@ import {
 import { RequireRoles } from '../auth/decorators/require-roles.decorator'
 import { UserRole } from '@prisma/client'
 import { PaginationDto } from '@common/dto/pagination.dto'
+import { SetProductCharacteristicDto } from '../characteristics/dto/characteristic-value.dto'
 
 @ApiTags('Products')
 @Controller('products')
@@ -298,5 +300,37 @@ export class ProductsController {
   })
   async removeBrand(@Param('id') id: string): Promise<void> {
     await this.brandsService.delete(id)
+  }
+
+  @Get(':id/characteristics')
+  @ApiOperation({ summary: 'Получить характеристики товара' })
+  @ApiParam({
+    name: 'id',
+    description: 'ID товара',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Характеристики товара',
+  })
+  async getProductCharacteristics(@Param('id') id: string): Promise<any[]> {
+    return this.productsService.getProductCharacteristics(id)
+  }
+
+  @Put(':id/characteristics')
+  @RequireRoles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Установить характеристики товара' })
+  @ApiParam({
+    name: 'id',
+    description: 'ID товара',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Характеристики установлены',
+  })
+  async setProductCharacteristics(
+    @Param('id') id: string,
+    @Body() characteristics: SetProductCharacteristicDto[],
+  ): Promise<void> {
+    await this.productsService.setProductCharacteristics(id, characteristics)
   }
 }

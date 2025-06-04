@@ -79,7 +79,7 @@ model Category {
   metaKeywords    String?
 
   products        ProductCategory[]
-  characteristics Characteristic[]
+  characteristics CharacteristicCategory[]
   viewHistory     ViewHistory[]
 
   @@index([slug])
@@ -172,22 +172,34 @@ model Brand {
 
 // Характеристики товаров
 model Characteristic {
-  id           String    @id @default(cuid())
+  id           String   @id @default(cuid())
   name         String
-  code         String    @unique
+  code         String   @unique
   type         String // text, number, boolean, select
   unit         String? // Единица измерения
-  isRequired   Boolean   @default(false)
-  isFilterable Boolean   @default(false)
+  isRequired   Boolean  @default(false)
+  isFilterable Boolean  @default(false)
   filterType   String? // range, checkbox, select
-  sortOrder    Int       @default(0)
-  categoryId   String?
-  category     Category? @relation(fields: [categoryId], references: [id])
-  createdAt    DateTime  @default(now())
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
 
   values        CharacteristicValue[]
   productValues ProductCharacteristic[]
+  categories    CharacteristicCategory[]
 
+  @@index([code])
+  @@index([isFilterable])
+}
+
+// Связь характеристик с категориями (many-to-many)
+model CharacteristicCategory {
+  id               String         @id @default(cuid())
+  characteristicId String
+  characteristic   Characteristic @relation(fields: [characteristicId], references: [id], onDelete: Cascade)
+  categoryId       String
+  category         Category       @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([characteristicId, categoryId])
   @@index([categoryId])
 }
 

@@ -4,6 +4,29 @@ import { Exclude, Type, plainToInstance } from 'class-transformer'
 import { CategoryResponseDto } from '../../categories/dto/category-response.dto'
 import { ProductWithRelations } from '../interfaces/product.interface'
 
+export class ProductCharacteristicResponseDto {
+  @ApiProperty()
+  id!: string
+
+  @ApiProperty()
+  name!: string
+
+  @ApiProperty()
+  code!: string
+
+  @ApiProperty()
+  type!: string
+
+  @ApiPropertyOptional()
+  unit?: string | null
+
+  @ApiProperty()
+  value!: string
+
+  @ApiPropertyOptional()
+  displayValue?: string
+}
+
 export class BrandResponseDto {
   @ApiProperty()
   id!: string
@@ -132,6 +155,13 @@ export class ProductResponseDto {
   })
   discountPercent?: number
 
+  @ApiPropertyOptional({
+    type: [ProductCharacteristicResponseDto],
+    description: 'Характеристики товара',
+  })
+  @Type(() => ProductCharacteristicResponseDto)
+  characteristics?: ProductCharacteristicResponseDto[]
+
   static fromEntity(product: ProductWithRelations): ProductResponseDto {
     const plain: any = {
       ...product,
@@ -146,6 +176,15 @@ export class ProductResponseDto {
       images: product.images || [],
       vehicleApplicationCount: product._count?.vehicleApplications || 0,
       crossReferenceCount: product._count?.crossReferences || 0,
+      characteristics: product.characteristics?.map((pc) => ({
+        id: pc.characteristic.id,
+        name: pc.characteristic.name,
+        code: pc.characteristic.code,
+        type: pc.characteristic.type,
+        unit: pc.characteristic.unit,
+        value: pc.value || pc.characteristicValue?.value || '',
+        displayValue: pc.characteristicValue?.value || pc.value || '',
+      })),
     }
 
     // Вычисляем процент скидки

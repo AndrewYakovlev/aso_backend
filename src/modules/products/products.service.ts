@@ -1,5 +1,10 @@
 // src/modules/products/products.service.ts
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common'
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+  BadRequestException,
+} from '@nestjs/common'
 import { PrismaService } from '../../prisma/prisma.service'
 import { Prisma } from '@prisma/client'
 import { CreateProductDto } from './dto/create-product.dto'
@@ -14,6 +19,8 @@ import { CacheKeys, CacheTTL } from '../../redis/redis.constants'
 import { RedisService } from '../../redis/redis.service'
 import { CategoriesService } from '../categories/categories.service'
 import { ProductWithRelations } from './interfaces/product.interface'
+import { SetProductCharacteristicDto } from '../characteristics/dto/characteristic-value.dto'
+import { CharacteristicsService } from '../characteristics/characteristics.service'
 
 @Injectable()
 export class ProductsService {
@@ -21,6 +28,7 @@ export class ProductsService {
     private readonly prisma: PrismaService,
     private readonly redisService: RedisService,
     private readonly categoriesService: CategoriesService,
+    private readonly characteristicsService: CharacteristicsService,
   ) {}
 
   async create(createProductDto: CreateProductDto): Promise<ProductWithRelations> {
@@ -401,6 +409,16 @@ export class ProductsService {
           sortOrder: 'asc' as const,
         },
       },
+      characteristics: {
+        include: {
+          characteristic: {
+            include: {
+              values: true,
+            },
+          },
+          characteristicValue: true,
+        },
+      },
       _count: {
         select: {
           vehicleApplications: true,
@@ -454,5 +472,97 @@ export class ProductsService {
       take: limit,
       orderBy: [{ stock: 'desc' }, { createdAt: 'desc' }],
     }) as Promise<ProductWithRelations[]>
+  }
+
+  async setProductCharacteristics(
+    productId: string,
+    characteristics: SetProductCharacteristicDto[],
+  ): Promise<void> {
+    const product = await this.findById(productId)
+    if (!product) {
+      throw new NotFoundException('Товар не найден')
+    }
+
+    // Валидируем все характеристики
+    for (const char of characteristics) {
+      const characteristic = await this.characteristicsService.findById(char.characteristicId)
+      if (!characteristic) {
+        throw new NotFoundException(`Характеристика ${char.characteristicId} не найдена`)
+      }
+
+      // Проверяем, что характеристика применима к категориям товара
+      const productCategoryIds = product.categories.map((pc) => pc.category.id)
+      const charCategoryIds = characteristic.categories?.map((cc) => cc.category.id) || []
+
+      // Если у характеристики есть категории, проверяем пересечение
+      if (charCategoryIds.length > 0) {
+        const hasIntersection = productCategoryIds.some((id) => charCategoryIds.includes(id))
+        if (!hasIntersection) {
+          throw new BadRequestException(
+            `Характеристика "${characteristic.name}" не применима к категориям данного товара`,
+          )
+        }
+      }
+
+      // Валидируем значение
+      let validationValue: any = {}
+      switch (characteristic.type) {
+        case 'text':
+          validationValue.textValue = char.value
+          break
+        case 'number':
+          validationValue.numberValue = char.value ? parseFloat(char.value) : undefined
+          break
+        case 'boolean':
+          validationValue.booleanValue = char.value === 'true'
+          break
+        case 'select':
+          validationValue.selectValueId = char.characteristicValueId
+          break
+      }
+
+      const validation = await this.characteristicsService.validateCharacteristicValue(
+        char.characteristicId,
+        validationValue,
+      )
+
+      if (!validation.isValid) {
+        throw new BadRequestException(validation.message)
+      }
+    }
+
+    // Удаляем старые значения
+    await this.prisma.productCharacteristic.deleteMany({
+      where: { productId },
+    })
+
+    // Создаем новые значения
+    if (characteristics.length > 0) {
+      await this.prisma.productCharacteristic.createMany({
+        data: characteristics.map((char) => ({
+          productId,
+          characteristicId: char.characteristicId,
+          value: char.value || null,
+          characteristicValueId: char.characteristicValueId || null,
+        })),
+      })
+    }
+
+    // Инвалидируем кеш товара
+    await this.redisService.del(`${CacheKeys.PRODUCT}${productId}`)
+  }
+
+  async getProductCharacteristics(productId: string): Promise<any[]> {
+    return this.prisma.productCharacteristic.findMany({
+      where: { productId },
+      include: {
+        characteristic: {
+          include: {
+            values: true,
+          },
+        },
+        characteristicValue: true,
+      },
+    })
   }
 }
