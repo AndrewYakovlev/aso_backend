@@ -15,13 +15,13 @@ export class BrandResponseDto {
   slug!: string
 
   @ApiPropertyOptional()
-  logo?: string
+  logo?: string | null
 
   @ApiPropertyOptional()
-  description?: string
+  description?: string | null
 
   @ApiPropertyOptional()
-  country?: string
+  country?: string | null
 }
 
 export class ProductImageResponseDto {
@@ -32,7 +32,7 @@ export class ProductImageResponseDto {
   url!: string
 
   @ApiPropertyOptional()
-  alt?: string
+  alt?: string | null
 
   @ApiProperty()
   sortOrder!: number
@@ -61,10 +61,10 @@ export class ProductResponseDto {
   slug!: string
 
   @ApiPropertyOptional()
-  description?: string
+  description?: string | null
 
   @ApiPropertyOptional()
-  shortDescription?: string
+  shortDescription?: string | null
 
   @ApiProperty()
   sku!: string
@@ -79,13 +79,13 @@ export class ProductResponseDto {
     description: 'Цена до скидки',
     type: Number,
   })
-  comparePrice?: number
+  comparePrice?: number | null
 
   @ApiProperty()
   stock!: number
 
   @ApiPropertyOptional()
-  deliveryDays?: number
+  deliveryDays?: number | null
 
   @ApiProperty()
   brandId!: string
@@ -107,7 +107,7 @@ export class ProductResponseDto {
   updatedAt!: Date
 
   @Exclude()
-  deletedAt?: Date
+  deletedAt?: Date | null
 
   @ApiProperty({ type: [ProductCategoryResponseDto] })
   @Type(() => ProductCategoryResponseDto)
@@ -176,13 +176,13 @@ export class ProductListItemDto {
   price!: number
 
   @ApiPropertyOptional()
-  comparePrice?: number
+  comparePrice?: number | null
 
   @ApiProperty()
   stock!: number
 
   @ApiPropertyOptional()
-  deliveryDays?: number
+  deliveryDays?: number | null
 
   @ApiProperty({ type: BrandResponseDto })
   @Type(() => BrandResponseDto)

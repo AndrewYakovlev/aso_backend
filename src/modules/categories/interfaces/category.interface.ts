@@ -2,7 +2,7 @@
 import { Category } from '@prisma/client'
 
 export interface CategoryWithRelations extends Category {
-  parent?: Category
+  parent?: Category | null
   children?: CategoryWithRelations[]
   _count?: {
     products?: number

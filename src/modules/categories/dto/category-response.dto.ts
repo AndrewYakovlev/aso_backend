@@ -14,10 +14,10 @@ export class CategoryResponseDto {
   slug!: string
 
   @ApiPropertyOptional()
-  description?: string
+  description?: string | null
 
   @ApiPropertyOptional()
-  parentId?: string
+  parentId?: string | null
 
   @ApiProperty()
   sortOrder!: number
@@ -29,11 +29,11 @@ export class CategoryResponseDto {
   createdAt!: Date
 
   @Exclude()
-  deletedAt?: Date
+  deletedAt?: Date | null
 
   @ApiPropertyOptional({ type: CategoryResponseDto })
   @Type(() => CategoryResponseDto)
-  parent?: CategoryResponseDto
+  parent?: CategoryResponseDto | null
 
   @ApiPropertyOptional({ type: [CategoryResponseDto] })
   @Type(() => CategoryResponseDto)
@@ -52,7 +52,10 @@ export class CategoryResponseDto {
   static fromEntity(category: CategoryWithRelations): CategoryResponseDto {
     const plain = {
       ...category,
-      parent: category.parent ? CategoryResponseDto.fromEntity(category.parent) : undefined,
+      parent:
+        category.parent && category.parent !== null
+          ? CategoryResponseDto.fromEntity(category.parent)
+          : undefined,
       children: category.children?.map((child) => CategoryResponseDto.fromEntity(child)),
       productCount: category._count?.products || category.productCount || 0,
       totalProductCount: category.totalProductCount,
@@ -65,7 +68,7 @@ export class CategoryResponseDto {
 export class CategoryTreeResponseDto extends CategoryResponseDto {
   @ApiProperty({ type: [CategoryTreeResponseDto] })
   @Type(() => CategoryTreeResponseDto)
-  children!: CategoryTreeResponseDto[]
+  declare children: CategoryTreeResponseDto[]
 
   static fromEntity(category: CategoryWithRelations): CategoryTreeResponseDto {
     const plain = {
