@@ -83,7 +83,11 @@ export class PushService {
 
       this.logger.log(`Push subscription saved for user ${userId}`, 'PushService')
     } catch (error) {
-      this.logger.error('Failed to save push subscription', error, 'PushService')
+      this.logger.error(
+        'Failed to save push subscription',
+        error instanceof Error ? error.message : String(error),
+        'PushService',
+      )
       throw error
     }
   }
@@ -233,7 +237,11 @@ export class PushService {
         'PushService',
       )
     } catch (error) {
-      this.logger.error('Failed to send notification', error, 'PushService')
+      this.logger.error(
+        'Failed to send notification',
+        error instanceof Error ? error.message : String(error),
+        'PushService',
+      )
       throw error
     }
   }
@@ -252,7 +260,8 @@ export class PushService {
         role: { in: ['MANAGER', 'ADMIN'] },
         id: { not: excludeUserId },
         deletedAt: null,
-        pushSubscriptions: {
+        PushSubscription: {
+          // Исправлено с pushSubscriptions на PushSubscription
           some: { isActive: true },
         },
       },
@@ -305,9 +314,22 @@ export class PushService {
     if (settings.scheduleDays && Array.isArray(settings.scheduleDays)) {
       const currentDay = new Date().toLocaleDateString('en-US', {
         timeZone: timezone,
-        weekday: 'numeric',
+        weekday: 'long', // Исправлено с 'numeric' на 'long'
       })
-      if (!settings.scheduleDays.includes(parseInt(currentDay))) {
+
+      // Преобразуем день недели в число (1-7)
+      const dayMap: Record<string, number> = {
+        Sunday: 0,
+        Monday: 1,
+        Tuesday: 2,
+        Wednesday: 3,
+        Thursday: 4,
+        Friday: 5,
+        Saturday: 6,
+      }
+
+      const currentDayNumber = dayMap[currentDay]
+      if (!settings.scheduleDays.includes(currentDayNumber)) {
         return false
       }
     }

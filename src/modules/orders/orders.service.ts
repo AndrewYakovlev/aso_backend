@@ -6,7 +6,7 @@ import {
   ConflictException,
 } from '@nestjs/common'
 import { PrismaService } from '../../prisma/prisma.service'
-import { Prisma, UserRole } from '@prisma/client'
+import { DeliveryMethod, Prisma, UserRole } from '@prisma/client'
 import { CreateOrderDto } from './dto/create-order.dto'
 import { OrderFiltersDto } from './dto/order-filters.dto'
 import { OrderResponseDto, CreateOrderResponseDto } from './dto/order-response.dto'
@@ -116,7 +116,9 @@ export class OrdersService {
             totalAmount: calculation.total + Number(shippingAmount),
             deliveryMethodId: dto.deliveryMethodId,
             paymentMethodId: dto.paymentMethodId,
-            shippingAddress: dto.shippingAddress,
+            shippingAddress: dto.shippingAddress
+              ? JSON.parse(JSON.stringify(dto.shippingAddress))
+              : null,
             comment: dto.comment,
             promoCodeId,
           },
@@ -269,7 +271,8 @@ export class OrdersService {
       this.prisma.order.findMany({
         where,
         include: this.getOrderInclude(),
-        skip: PaginationUtil.getSkip(filters.page, filters.limit),
+        skip:
+          filters.page && filters.limit ? PaginationUtil.getSkip(filters.page, filters.limit) : 0,
         take: filters.limit,
         orderBy: { createdAt: 'desc' },
       }),
@@ -278,7 +281,7 @@ export class OrdersService {
 
     const data = items.map((item) => OrderResponseDto.fromEntity(item))
 
-    return PaginationUtil.createPaginatedResult(data, total, filters.page, filters.limit)
+    return PaginationUtil.createPaginatedResult(data, total, filters.page || 1, filters.limit || 20)
   }
 
   /**
@@ -344,7 +347,7 @@ export class OrdersService {
   private async sendOrderNotifications(order: any): Promise<void> {
     // TODO: Отправка SMS/Email клиенту
     // TODO: Уведомление менеджеров в Telegram
-    this.logger.info(`Отправка уведомлений для заказа ${order.orderNumber}`)
+    this.logger.log(`Отправка уведомлений для заказа ${order.orderNumber}`)
   }
 
   /**
@@ -405,56 +408,19 @@ export class OrdersService {
   /**
    * Рассчитать стоимость доставки
    */
-  async calculateShipping(dto: CalculateShippingDto): Promise<ShippingCalculationResponseDto> {
-    const deliveryMethod = await this.prisma.deliveryMethod.findUnique({
-      where: { id: dto.deliveryMethodId },
-    })
-
-    if (!deliveryMethod || !deliveryMethod.isActive) {
-      throw new NotFoundException('Метод доставки не найден')
+  private async calculateShipping(
+    deliveryMethod: DeliveryMethod,
+    orderAmount: number,
+  ): Promise<number> {
+    if (!deliveryMethod.minAmount) {
+      return Number(deliveryMethod.price)
     }
 
-    const basePrice = Number(deliveryMethod.price)
-    const minAmount = deliveryMethod.minAmount ? Number(deliveryMethod.minAmount) : null
-
-    let calculatedPrice = basePrice
-    let isFreeShipping = false
-    let amountToFreeShipping: number | undefined
-
-    // Проверяем условия бесплатной доставки
-    if (minAmount !== null) {
-      if (dto.orderAmount >= minAmount) {
-        calculatedPrice = 0
-        isFreeShipping = true
-      } else {
-        amountToFreeShipping = minAmount - dto.orderAmount
-      }
+    if (orderAmount >= Number(deliveryMethod.minAmount)) {
+      return 0
     }
 
-    // Дополнительная логика расчета на основе settings
-    if (deliveryMethod.settings && !isFreeShipping) {
-      const settings = deliveryMethod.settings as any
-
-      // Например, расчет по расстоянию
-      if (settings.pricePerKm && dto.shippingAddress?.distance) {
-        calculatedPrice = basePrice + settings.pricePerKm * dto.shippingAddress.distance
-      }
-
-      // Или дополнительная плата за вес
-      if (settings.pricePerKg && dto.shippingAddress?.weight) {
-        calculatedPrice += settings.pricePerKg * dto.shippingAddress.weight
-      }
-    }
-
-    return {
-      deliveryMethodId: deliveryMethod.id,
-      deliveryMethodName: deliveryMethod.name,
-      basePrice,
-      calculatedPrice,
-      isFreeShipping,
-      freeShippingThreshold: minAmount || undefined,
-      amountToFreeShipping,
-    }
+    return Number(deliveryMethod.price)
   }
 
   /**
@@ -932,9 +898,16 @@ export class OrdersService {
     // 3. Push-уведомление в мобильное приложение
     // 4. Webhook для интеграций
 
-    this.logger.info(
+    this.logger.log(
       `Смена статуса заказа ${order.orderNumber}: ${oldStatus.name} -> ${newStatus.name}`,
     )
+  }
+
+  async getAllStatuses() {
+    return this.prisma.orderStatus.findMany({
+      where: { isActive: true },
+      orderBy: { sortOrder: 'asc' },
+    })
   }
 
   /**

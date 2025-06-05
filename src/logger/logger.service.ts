@@ -92,7 +92,7 @@ export class LoggerService implements NestLoggerService {
   }
 
   log(message: any, context?: string) {
-    this.logger.info(message, { context })
+    this.logger.log(message, { context })
   }
 
   error(message: any, trace?: string, context?: string) {
@@ -117,7 +117,7 @@ export class LoggerService implements NestLoggerService {
 
   // Дополнительные методы для расширенного логирования
   logWithMeta(message: string, meta: Record<string, any>, context?: string) {
-    this.logger.info(message, { context, ...meta })
+    this.logger.log(message, { context, ...meta })
   }
 
   errorWithMeta(message: string, error: Error, meta: Record<string, any>, context?: string) {
@@ -139,7 +139,7 @@ export class LoggerService implements NestLoggerService {
     userAgent?: string,
     ip?: string,
   ) {
-    this.logger.info('HTTP Request', {
+    this.logger.log('HTTP Request', {
       context: 'HTTP',
       method,
       url,
@@ -164,7 +164,7 @@ export class LoggerService implements NestLoggerService {
 
   // Метод для логирования бизнес-событий
   logBusinessEvent(event: string, userId?: string, data?: Record<string, any>) {
-    this.logger.info('Business Event', {
+    this.logger.log('Business Event', {
       context: 'Business',
       event,
       userId,

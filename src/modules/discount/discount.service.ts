@@ -313,7 +313,7 @@ export class DiscountService {
 
           // Проверка категорий
           if (discount.conditions?.categories) {
-            const itemCategories = item.product.categories?.map((c) => c.category.id) || []
+            const itemCategories: string[] = []
             const hasCategory = discount.conditions.categories.some((catId) =>
               itemCategories.includes(catId),
             )
@@ -394,7 +394,7 @@ export class DiscountService {
 
         // Проверка категорий
         if (discount.conditions?.categories) {
-          const itemCategories = item.product.categories?.map((c) => c.category.id) || []
+          const itemCategories: string[] = []
           const hasCategory = discount.conditions.categories.some((catId) =>
             itemCategories.includes(catId),
           )

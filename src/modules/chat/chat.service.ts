@@ -16,6 +16,8 @@ import {
   MessageType,
   Prisma,
   UserRole,
+  User,
+  AnonymousUser,
 } from '@prisma/client'
 import { SendMessageDto } from './dto/send-message.dto'
 import { MessageResponseDto } from './dto/message-response.dto'
@@ -59,7 +61,15 @@ export class ChatService {
   /**
    * Создать или получить существующий активный чат
    */
-  async createOrGetChat(userId?: string, sessionId?: string): Promise<Chat> {
+  async createOrGetChat(
+    userId?: string,
+    sessionId?: string,
+  ): Promise<
+    Chat & {
+      status: ChatStatus
+      manager?: User | null
+    }
+  > {
     if (!userId && !sessionId) {
       throw new BadRequestException('User ID or session ID is required')
     }
@@ -79,7 +89,7 @@ export class ChatService {
     })
 
     if (existingChat) {
-      return existingChat
+      return existingChat as Chat & { status: ChatStatus; manager?: User | null }
     }
 
     // Получаем начальный статус
@@ -118,7 +128,7 @@ export class ChatService {
       isAnonymous: !!sessionId,
     })
 
-    return chat
+    return chat as Chat & { status: ChatStatus; manager?: User | null }
   }
 
   /**
@@ -560,8 +570,20 @@ export class ChatService {
             code: chat.status.code,
             color: chat.status.color,
           },
-          user: chat.user,
-          anonymousUser: chat.anonymousUser,
+          user: chat.user
+            ? {
+                id: chat.user.id,
+                phone: chat.user.phone,
+                firstName: chat.user.firstName ?? undefined,
+                lastName: chat.user.lastName ?? undefined,
+              }
+            : undefined,
+          anonymousUser: chat.anonymousUser
+            ? {
+                id: chat.anonymousUser.id,
+                sessionId: chat.anonymousUser.sessionId,
+              }
+            : undefined,
           createdAt: chat.createdAt,
           updatedAt: chat.updatedAt,
           lastMessage: chat.messages[0] ? this.formatMessage(chat.messages[0]) : undefined,
@@ -579,14 +601,24 @@ export class ChatService {
 
   // === Приватные методы ===
 
-  private async getChat(chatId: string): Promise<Chat | null> {
+  public async getChat(chatId: string): Promise<
+    | (Chat & {
+        status: ChatStatus
+        user?: User | null
+        manager?: User | null
+        anonymousUser?: AnonymousUser | null
+      })
+    | null
+  > {
     return this.prisma.chat.findUnique({
       where: { id: chatId },
       include: {
         status: true,
         manager: true,
+        user: true,
+        anonymousUser: true,
       },
-    })
+    }) as any
   }
 
   private async initializeChatMetrics(chatId: string): Promise<void> {
@@ -1003,6 +1035,7 @@ export class ChatService {
       await this.prisma.cartItem.create({
         data: {
           cartId: cart.id,
+          productId: null, // Исправлено с undefined на null
           chatProductId,
           quantity,
           price: chatProduct.price,
@@ -1042,7 +1075,9 @@ export class ChatService {
    * Форматирование карточки товара для ответа
    */
   private formatChatProduct(chatProduct: any): ChatProductResponseDto {
-    const formatted: ChatProductResponseDto = {
+    const result = Object.create(ChatProductResponseDto.prototype)
+
+    Object.assign(result, {
       id: chatProduct.id,
       name: chatProduct.name,
       brand: chatProduct.brand,
@@ -1054,19 +1089,8 @@ export class ChatService {
       description: chatProduct.description,
       images: chatProduct.images || [],
       createdAt: chatProduct.createdAt,
-    }
-
-    // Добавляем вычисляемое свойство discountPercent
-    Object.defineProperty(formatted, 'discountPercent', {
-      get() {
-        if (!this.comparePrice || this.comparePrice <= this.price) {
-          return null
-        }
-        return Math.round(((this.comparePrice - this.price) / this.comparePrice) * 100)
-      },
-      enumerable: true,
     })
 
-    return formatted
+    return result
   }
 }

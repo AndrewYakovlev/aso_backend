@@ -91,7 +91,7 @@ export class CartService {
       // Если добавляем обычный товар
       if (dto.productId) {
         // Проверяем существование и доступность товара
-        const product = await this.productsService.findOne(dto.productId)
+        const product = await this.productsService.findById(dto.productId)
         if (!product) {
           throw new NotFoundException('Товар не найден')
         }
@@ -449,7 +449,10 @@ export class CartService {
       await this.redisService.del(`${CacheKeys.CART}${anonymousId}`)
       await this.redisService.del(`${CacheKeys.CART}${userId}`)
     } catch (error) {
-      this.logger.error('Ошибка при слиянии корзин', error)
+      this.logger.error(
+        'Ошибка при слиянии корзин',
+        error instanceof Error ? error.message : String(error),
+      )
       // Не прерываем процесс авторизации из-за ошибки слияния
     }
   }
@@ -460,7 +463,7 @@ export class CartService {
   @Cron(CronExpression.EVERY_DAY_AT_3AM)
   async cleanupOldCarts(): Promise<void> {
     try {
-      this.logger.info('Начало очистки старых корзин')
+      this.logger.log('Начало очистки старых корзин')
 
       const ninetyDaysAgo = new Date()
       ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90)
@@ -491,11 +494,14 @@ export class CartService {
         })
       }
 
-      this.logger.info(
+      this.logger.log(
         `Очистка корзин завершена. Удалено: ${deletedCarts.count} анонимных, ${emptyUserCarts.length} пустых пользовательских`,
       )
     } catch (error) {
-      this.logger.error('Ошибка при очистке старых корзин', error)
+      this.logger.error(
+        'Ошибка при очистке старых корзин',
+        error instanceof Error ? error.message : String(error),
+      )
     }
   }
 

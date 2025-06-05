@@ -1,306 +1,226 @@
 // src/modules/notifications/notifications.service.ts
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from '../../prisma/prisma.service'
+import { LoggerService } from '../../logger/logger.service'
 import { PushService } from './services/push.service'
 import { NotificationSettingsService } from './services/notification-settings.service'
-import { LoggerService } from '../../logger/logger.service'
-import { Chat, Message, Order } from '@prisma/client'
-
-export interface NotificationData {
-  chatId?: string
-  messageId?: string
-  orderId?: string
-  url?: string
-  [key: string]: any
-}
+import { NotificationType } from './enums/notification-type.enum'
+import { Chat, Message, User, Order } from '@prisma/client'
 
 @Injectable()
 export class NotificationsService {
   constructor(
     private prisma: PrismaService,
+    private logger: LoggerService,
     private pushService: PushService,
     private settingsService: NotificationSettingsService,
-    private logger: LoggerService,
   ) {}
 
   /**
-   * Уведомление о новом чате
+   * Отправить уведомление о новом чате
    */
-  async notifyNewChat(chat: Chat & { user?: any; anonymousUser?: any }): Promise<void> {
+  async sendNewChatNotification(chat: Chat & { user?: User | null }): Promise<void> {
     try {
-      const customerName = chat.user ? chat.user.firstName || chat.user.phone : 'Гость'
+      const userName = chat.user ? chat.user.firstName || chat.user.phone : 'Гость'
 
-      const notification = {
-        title: '🆕 Новый чат',
-        body: `${customerName} начал чат`,
-        icon: '/icons/chat-new.png',
-        badge: '/icons/badge.png',
-        tag: `new-chat-${chat.id}`,
-        data: {
-          chatId: chat.id,
-          url: `/admin/chats/${chat.id}`,
-        },
-        requireInteraction: true,
-        actions: [
-          {
-            action: 'open',
-            title: 'Открыть чат',
-          },
-          {
-            action: 'dismiss',
-            title: 'Позже',
-          },
-        ],
-      }
-
-      await this.pushService.sendNotificationToManagers(notification, 'new_chat')
-    } catch (error) {
-      this.logger.error('Failed to send new chat notification', error, 'NotificationsService')
-    }
-  }
-
-  /**
-   * Уведомление о новом сообщении
-   */
-  async notifyNewMessage(message: Message & { chat?: any }, senderName: string): Promise<void> {
-    try {
-      // Определяем получателей
-      const recipients: string[] = []
-
-      if (message.senderType === 'CUSTOMER') {
-        // Уведомляем менеджера чата
-        if (message.chat?.managerId) {
-          recipients.push(message.chat.managerId)
-        } else {
-          // Если менеджер не назначен, уведомляем всех
-          await this.pushService.sendNotificationToManagers(
-            {
-              title: '💬 Новое сообщение',
-              body: `${senderName}: ${this.truncateMessage(message.content)}`,
-              icon: '/icons/message.png',
-              badge: '/icons/badge.png',
-              tag: `chat-${message.chatId}`,
-              data: {
-                chatId: message.chatId,
-                messageId: message.id,
-                url: `/admin/chats/${message.chatId}`,
-              },
-            },
-            'new_message',
-          )
-          return
-        }
-      } else if (message.senderType === 'MANAGER' && message.chat?.userId) {
-        // Уведомляем клиента
-        recipients.push(message.chat.userId)
-      }
-
-      // Отправляем уведомления
-      for (const recipientId of recipients) {
-        await this.pushService.sendNotification(
-          recipientId,
-          {
-            title: '💬 Новое сообщение',
-            body: `${senderName}: ${this.truncateMessage(message.content)}`,
-            icon: '/icons/message.png',
-            badge: '/icons/badge.png',
-            tag: `chat-${message.chatId}`,
-            data: {
-              chatId: message.chatId,
-              messageId: message.id,
-              url:
-                message.senderType === 'MANAGER'
-                  ? `/chat/${message.chatId}`
-                  : `/admin/chats/${message.chatId}`,
-            },
-            actions: [
-              {
-                action: 'reply',
-                title: 'Ответить',
-              },
-              {
-                action: 'open',
-                title: 'Открыть',
-              },
-            ],
-          },
-          'new_message',
-        )
-      }
-    } catch (error) {
-      this.logger.error('Failed to send new message notification', error, 'NotificationsService')
-    }
-  }
-
-  /**
-   * Уведомление о назначении менеджера
-   */
-  async notifyChatAssigned(chatId: string, managerId: string, managerName: string): Promise<void> {
-    try {
-      const chat = await this.prisma.chat.findUnique({
-        where: { id: chatId },
-        include: { user: true },
-      })
-
-      if (!chat || !chat.userId) return
-
-      await this.pushService.sendNotification(
-        chat.userId,
+      await this.pushService.sendNotificationToManagers(
         {
-          title: '👤 Менеджер подключился',
-          body: `${managerName} готов вам помочь`,
-          icon: '/icons/manager.png',
+          title: 'Новый чат',
+          body: `${userName} начал чат`,
+          icon: '/icon-192x192.png',
+          badge: '/badge-72x72.png',
+          tag: `new-chat-${chat.id}`,
           data: {
-            chatId,
-            url: `/chat/${chatId}`,
+            chatId: chat.id,
+            action: 'open-chat',
           },
+          requireInteraction: true,
         },
-        'chat_assigned',
+        NotificationType.NEW_CHAT,
       )
     } catch (error) {
-      this.logger.error('Failed to send chat assigned notification', error, 'NotificationsService')
+      this.logger.error(
+        'Failed to send new chat notification',
+        error instanceof Error ? error.message : String(error),
+        'NotificationsService',
+      )
     }
   }
 
   /**
-   * Уведомление об изменении статуса чата
+   * Отправить уведомление о новом сообщении
    */
-  async notifyChatStatusChanged(
-    chatId: string,
-    newStatus: string,
-    statusName: string,
+  async sendNewMessageNotification(
+    message: Message & {
+      chat: Chat & {
+        user?: User | null
+        manager?: User | null
+      }
+    },
+    recipientId: string,
   ): Promise<void> {
     try {
-      const chat = await this.prisma.chat.findUnique({
-        where: { id: chatId },
-        include: { user: true, manager: true },
-      })
-
-      if (!chat) return
-
-      // Уведомляем клиента если чат закрыт
-      if (newStatus === 'closed' && chat.userId) {
-        await this.pushService.sendNotification(
-          chat.userId,
-          {
-            title: '✅ Чат завершен',
-            body: 'Спасибо за обращение! Мы всегда рады помочь.',
-            icon: '/icons/chat-closed.png',
-            data: {
-              chatId,
-              url: `/chat/history`,
-            },
-          },
-          'chat_status_changed',
-        )
+      // Проверяем настройки пользователя
+      const settings = await this.settingsService.getUserSettings(recipientId)
+      if (!settings.newMessage) {
+        return
       }
 
-      // Уведомляем менеджера об изменениях
-      if (chat.managerId && newStatus !== 'closed') {
-        await this.pushService.sendNotification(
-          chat.managerId,
-          {
-            title: '📝 Статус чата изменен',
-            body: `Новый статус: ${statusName}`,
-            icon: '/icons/status.png',
-            data: {
-              chatId,
-              url: `/admin/chats/${chatId}`,
-            },
+      const senderName = message.chat.user
+        ? message.chat.user.firstName || message.chat.user.phone
+        : 'Гость'
+
+      // Обрезаем длинное сообщение
+      const bodyText =
+        message.content.length > 100 ? message.content.substring(0, 97) + '...' : message.content
+
+      await this.pushService.sendNotification(
+        recipientId,
+        {
+          title: `Новое сообщение от ${senderName}`,
+          body: bodyText,
+          icon: '/icon-192x192.png',
+          badge: '/badge-72x72.png',
+          tag: `chat-${message.chatId}`,
+          data: {
+            chatId: message.chatId,
+            messageId: message.id,
+            action: 'open-chat',
           },
-          'chat_status_changed',
-        )
-      }
+          actions: [
+            {
+              action: 'reply',
+              title: 'Ответить',
+            },
+            {
+              action: 'open',
+              title: 'Открыть',
+            },
+          ],
+        },
+        NotificationType.NEW_MESSAGE,
+      )
     } catch (error) {
-      this.logger.error('Failed to send status changed notification', error, 'NotificationsService')
+      this.logger.error(
+        'Failed to send new message notification',
+        error instanceof Error ? error.message : String(error),
+        'NotificationsService',
+      )
     }
   }
 
   /**
-   * Уведомление об изменении статуса заказа
+   * Отправить уведомление о назначении менеджера
    */
-  async notifyOrderStatusChanged(
-    order: Order & { status?: any },
-    oldStatus: string,
+  async sendChatAssignedNotification(chat: Chat, managerId: string): Promise<void> {
+    try {
+      const settings = await this.settingsService.getUserSettings(managerId)
+      if (!settings.chatAssigned) {
+        return
+      }
+
+      await this.pushService.sendNotification(
+        managerId,
+        {
+          title: 'Новый чат назначен вам',
+          body: 'У вас есть новый клиент в чате',
+          icon: '/icon-192x192.png',
+          badge: '/badge-72x72.png',
+          tag: `assigned-${chat.id}`,
+          data: {
+            chatId: chat.id,
+            action: 'open-chat',
+          },
+          requireInteraction: true,
+        },
+        NotificationType.CHAT_ASSIGNED,
+      )
+    } catch (error) {
+      this.logger.error(
+        'Failed to send chat assigned notification',
+        error instanceof Error ? error.message : String(error),
+        'NotificationsService',
+      )
+    }
+  }
+
+  /**
+   * Отправить уведомление об изменении статуса чата
+   */
+  async sendChatStatusChangedNotification(
+    chat: Chat & {
+      user?: User | null
+      status: { name: string }
+    },
+    userId: string,
   ): Promise<void> {
     try {
-      if (!order.userId) return
+      const settings = await this.settingsService.getUserSettings(userId)
+      if (!settings.chatStatusChanged) {
+        return
+      }
 
-      const statusEmoji: Record<string, string> = {
-        processing: '⏳',
-        confirmed: '✅',
-        shipped: '🚚',
-        delivered: '📦',
-        cancelled: '❌',
+      await this.pushService.sendNotification(
+        userId,
+        {
+          title: 'Статус чата изменен',
+          body: `Статус вашего чата изменен на "${chat.status.name}"`,
+          icon: '/icon-192x192.png',
+          badge: '/badge-72x72.png',
+          tag: `status-${chat.id}`,
+          data: {
+            chatId: chat.id,
+            action: 'open-chat',
+          },
+        },
+        NotificationType.CHAT_STATUS_CHANGED,
+      )
+    } catch (error) {
+      this.logger.error(
+        'Failed to send status changed notification',
+        error instanceof Error ? error.message : String(error),
+        'NotificationsService',
+      )
+    }
+  }
+
+  /**
+   * Отправить уведомление об изменении статуса заказа
+   */
+  async sendOrderStatusNotification(
+    order: Order & {
+      status: { name: string }
+      user: User
+    },
+  ): Promise<void> {
+    try {
+      const settings = await this.settingsService.getUserSettings(order.userId)
+      if (!settings.orderStatusChanged) {
+        return
       }
 
       await this.pushService.sendNotification(
         order.userId,
         {
-          title: `${statusEmoji[order.status?.code] || '📋'} Заказ №${order.orderNumber}`,
-          body: `Статус изменен: ${order.status?.name}`,
-          icon: '/icons/order.png',
+          title: 'Статус заказа изменен',
+          body: `Заказ №${order.orderNumber} - "${order.status.name}"`,
+          icon: '/icon-192x192.png',
+          badge: '/badge-72x72.png',
+          tag: `order-${order.id}`,
           data: {
             orderId: order.id,
             orderNumber: order.orderNumber,
-            url: `/orders/${order.id}`,
+            action: 'open-order',
           },
         },
-        'order_status_changed',
+        NotificationType.ORDER_STATUS_CHANGED,
       )
     } catch (error) {
-      this.logger.error('Failed to send order status notification', error, 'NotificationsService')
-    }
-  }
-
-  /**
-   * Обрезать сообщение для уведомления
-   */
-  private truncateMessage(message: string, maxLength: number = 50): string {
-    if (message.length <= maxLength) return message
-    return message.substring(0, maxLength - 3) + '...'
-  }
-
-  /**
-   * Отметить уведомление как прочитанное
-   */
-  async markNotificationClicked(userId: string, notificationId: string): Promise<void> {
-    await this.prisma.notificationLog.updateMany({
-      where: {
-        id: notificationId,
-        userId,
-      },
-      data: {
-        status: 'clicked',
-        clickedAt: new Date(),
-      },
-    })
-  }
-
-  /**
-   * Получить историю уведомлений
-   */
-  async getNotificationHistory(userId: string, page: number = 1, limit: number = 20) {
-    const skip = (page - 1) * limit
-
-    const [notifications, total] = await Promise.all([
-      this.prisma.notificationLog.findMany({
-        where: { userId },
-        orderBy: { sentAt: 'desc' },
-        take: limit,
-        skip,
-      }),
-      this.prisma.notificationLog.count({
-        where: { userId },
-      }),
-    ])
-
-    return {
-      data: notifications,
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit),
+      this.logger.error(
+        'Failed to send order status notification',
+        error instanceof Error ? error.message : String(error),
+        'NotificationsService',
+      )
     }
   }
 }

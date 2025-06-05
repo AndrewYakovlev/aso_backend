@@ -190,10 +190,7 @@ export class OrdersController {
     description: 'Список статусов',
   })
   async getAllStatuses() {
-    return this.prisma.orderStatus.findMany({
-      where: { isActive: true },
-      orderBy: { sortOrder: 'asc' },
-    })
+    return this.ordersService.getAllStatuses()
   }
 
   @Post('calculate-shipping')

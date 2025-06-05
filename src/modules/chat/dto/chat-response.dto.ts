@@ -3,25 +3,25 @@ import { MessageResponseDto } from './message-response.dto'
 
 export class ChatResponseDto {
   id!: string
-  userId?: string
-  anonymousId?: string
-  managerId?: string
+  userId?: string | null
+  anonymousId?: string | null
+  managerId?: string | null
   status!: {
     id: string
     name: string
     code: string
-    color?: string
+    color?: string | null
   }
   manager?: {
     id: string
-    firstName?: string
-    lastName?: string
+    firstName?: string | null
+    lastName?: string | null
   }
   user?: {
     id: string
     phone: string
-    firstName?: string
-    lastName?: string
+    firstName?: string | null
+    lastName?: string | null
   }
   anonymousUser?: {
     id: string

@@ -1,6 +1,6 @@
 // src/modules/orders/dto/delivery-method-response.dto.ts
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
-import { Type } from 'class-transformer'
+import { DeliveryMethod } from '@prisma/client'
 
 export class DeliveryMethodResponseDto {
   @ApiProperty()
@@ -15,14 +15,10 @@ export class DeliveryMethodResponseDto {
   @ApiPropertyOptional()
   description?: string | null
 
-  @ApiProperty({
-    description: 'Стоимость доставки',
-  })
+  @ApiProperty()
   price!: number
 
-  @ApiPropertyOptional({
-    description: 'Минимальная сумма для бесплатной доставки',
-  })
+  @ApiPropertyOptional()
   minAmount?: number | null
 
   @ApiProperty()
@@ -31,38 +27,45 @@ export class DeliveryMethodResponseDto {
   @ApiProperty()
   sortOrder!: number
 
-  @ApiPropertyOptional({
-    description: 'Дополнительные настройки',
-  })
+  @ApiPropertyOptional()
   settings?: any
 
   @ApiProperty()
   createdAt!: Date
 
   @ApiPropertyOptional({
-    description: 'Расчетная стоимость доставки для текущей корзины',
-  })
-  calculatedPrice?: number
-
-  @ApiPropertyOptional({
-    description: 'Бесплатная доставка доступна',
+    description: 'Доступна ли бесплатная доставка при текущей сумме корзины',
   })
   isFreeAvailable?: boolean
 
-  static fromEntity(entity: any, cartAmount?: number): DeliveryMethodResponseDto {
-    const dto = new DeliveryMethodResponseDto()
-    Object.assign(dto, {
-      ...entity,
-      price: Number(entity.price),
-      minAmount: entity.minAmount ? Number(entity.minAmount) : null,
-    })
+  @ApiPropertyOptional({
+    description: 'Стоимость доставки с учетом суммы корзины',
+  })
+  calculatedPrice?: number
 
-    // Если передана сумма корзины, рассчитываем стоимость
-    if (cartAmount !== undefined) {
-      dto.calculatedPrice = dto.minAmount && cartAmount >= dto.minAmount ? 0 : dto.price
-      dto.isFreeAvailable = dto.minAmount !== null && cartAmount >= dto.minAmount
+  static fromEntity(dto: DeliveryMethod, cartAmount?: number): DeliveryMethodResponseDto {
+    const result: DeliveryMethodResponseDto = {
+      id: dto.id,
+      name: dto.name,
+      code: dto.code,
+      description: dto.description,
+      price: Number(dto.price),
+      minAmount: dto.minAmount ? Number(dto.minAmount) : null,
+      isActive: dto.isActive,
+      sortOrder: dto.sortOrder,
+      settings: dto.settings,
+      createdAt: dto.createdAt,
     }
 
-    return dto
+    // Рассчитываем доступность бесплатной доставки
+    if (cartAmount !== undefined && dto.minAmount !== null && dto.minAmount !== undefined) {
+      result.isFreeAvailable = cartAmount >= Number(dto.minAmount)
+      result.calculatedPrice = result.isFreeAvailable ? 0 : Number(dto.price)
+    } else {
+      result.isFreeAvailable = false
+      result.calculatedPrice = Number(dto.price)
+    }
+
+    return result
   }
 }

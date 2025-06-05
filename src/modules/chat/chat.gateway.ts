@@ -10,291 +10,402 @@ import {
   WsException,
 } from '@nestjs/websockets'
 import { Server, Socket } from 'socket.io'
-import { UseGuards, UsePipes, ValidationPipe } from '@nestjs/common'
+import { UseGuards, Injectable } from '@nestjs/common'
 import { ChatService } from './chat.service'
-import { LoggerService } from '../../logger/logger.service'
-import { WsAuthGuard } from './guards/ws-auth.guard'
 import { SendMessageDto } from './dto/send-message.dto'
-import { TypingDto } from './dto/typing.dto'
-import { SenderType, UserRole } from '@prisma/client'
-import { SendProductCardDto } from './dto/chat-product.dto'
-import { NotificationsService } from '@modules/notifications/notifications.service'
+import { MessageResponseDto } from './dto/message-response.dto'
+import { LoggerService } from '../../logger/logger.service'
+import { JwtService } from '@nestjs/jwt'
+import { ConfigService } from '@nestjs/config'
+import { SenderType, MessageType, UserRole } from '@prisma/client'
+import { PrismaService } from '../../prisma/prisma.service'
 
-interface SocketUser {
-  userId?: string
-  sessionId?: string
-  isAnonymous: boolean
-  role?: UserRole
-}
-
+@Injectable()
 @WebSocketGateway({
   namespace: 'chat',
   cors: {
-    origin: process.env.SOCKET_CORS_ORIGIN?.split(',') || ['http://localhost:3000'],
+    origin: true,
     credentials: true,
   },
 })
-@UseGuards(WsAuthGuard)
-@UsePipes(new ValidationPipe({ transform: true }))
 export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server!: Server
 
-  private userSockets = new Map<string, Set<string>>() // userId/sessionId -> socketIds
-  private socketChats = new Map<string, string>() // socketId -> chatId
+  private userSockets = new Map<string, Set<string>>() // userId/sessionId -> Set<socketId>
+  private socketToUser = new Map<string, string>() // socketId -> userId/sessionId
+  private managerSockets = new Map<string, Set<string>>() // managerId -> Set<socketId>
 
   constructor(
     private chatService: ChatService,
     private logger: LoggerService,
-    private notificationsService: NotificationsService, // Добавляем
+    private jwtService: JwtService,
+    private configService: ConfigService,
+    private prisma: PrismaService,
   ) {}
 
-  async handleConnection(client: Socket) {
+  async handleConnection(client: Socket): Promise<void> {
     try {
-      const user: SocketUser = client.data.user
-      const userKey = user.isAnonymous ? user.sessionId! : user.userId!
+      const token = client.handshake.auth.token || client.handshake.headers.authorization
+      const anonymousToken = client.handshake.headers['x-anonymous-token']
 
-      // Добавляем сокет в мапу пользователя
+      let user: any
+
+      if (token) {
+        // Авторизованный пользователь
+        try {
+          const payload = this.jwtService.verify(token.replace('Bearer ', ''), {
+            secret: this.configService.get('jwt.access.secret'),
+          })
+          user = {
+            userId: payload.userId,
+            role: payload.role,
+            type: 'authenticated',
+          }
+        } catch {
+          client.disconnect()
+          return
+        }
+      } else if (anonymousToken) {
+        // Анонимный пользователь
+        try {
+          const anonymousTokenValue = Array.isArray(anonymousToken)
+            ? anonymousToken[0]
+            : anonymousToken
+          const payload = this.jwtService.verify(anonymousTokenValue, {
+            secret: this.configService.get('jwt.anonymous.secret'),
+          })
+          user = {
+            sessionId: payload.sessionId,
+            type: 'anonymous',
+          }
+        } catch {
+          client.disconnect()
+          return
+        }
+      } else {
+        client.disconnect()
+        return
+      }
+
+      // Сохраняем связь socket-user
+      const userKey = user.userId || user.sessionId
+      this.socketToUser.set(client.id, userKey)
+
       if (!this.userSockets.has(userKey)) {
         this.userSockets.set(userKey, new Set())
       }
       this.userSockets.get(userKey)!.add(client.id)
 
-      // Создаем или получаем чат
-      const chat = await this.chatService.createOrGetChat(
-        user.isAnonymous ? undefined : user.userId,
-        user.isAnonymous ? user.sessionId : undefined,
-      )
-
-      // Присоединяем к комнате чата
-      await client.join(`chat:${chat.id}`)
-      this.socketChats.set(client.id, chat.id)
-
-      // Если это менеджер, присоединяем к комнате менеджеров
+      // Если это менеджер, добавляем в отдельную коллекцию
       if (user.role === UserRole.MANAGER || user.role === UserRole.ADMIN) {
-        await client.join('managers')
-
-        // Если чат не назначен, назначаем этого менеджера
-        if (!chat.managerId && user.userId) {
-          await this.chatService.assignManager(chat.id, user.userId)
-          this.server.to(`chat:${chat.id}`).emit('managerAssigned', {
-            managerId: user.userId,
-            chatId: chat.id,
-          })
+        if (!this.managerSockets.has(user.userId)) {
+          this.managerSockets.set(user.userId, new Set())
         }
+        this.managerSockets.get(user.userId)!.add(client.id)
+
+        // Присоединяем к комнате менеджеров
+        client.join('managers')
       }
 
-      // Отправляем историю чата
-      const messages = await this.chatService.getChatHistory(chat.id)
-      client.emit('chatHistory', {
-        chatId: chat.id,
-        messages,
-        chat: {
-          id: chat.id,
-          status: chat.status,
-          managerId: chat.managerId,
-        },
-      })
+      // Получаем активные чаты пользователя
+      const chats = await this.chatService.getUserActiveChats(user.userId, user.sessionId)
 
-      // Уведомляем менеджеров о новом чате
-      if (chat.status.code === 'new' && !user.role) {
+      // Присоединяем к комнатам чатов
+      for (const chat of chats) {
+        client.join(`chat:${chat.id}`)
+
+        // Отправляем последние сообщения
+        const history = await this.chatService.getChatHistory(chat.id, 1, 50)
+        client.emit('chatHistory', {
+          chatId: chat.id,
+          messages: history.data,
+          status: chat.status,
+        })
+      }
+
+      // Если это обычный пользователь с новым чатом, уведомляем менеджеров
+      const chat = await this.chatService.getChat(chats[0]?.id)
+      if (chat && chat.status.code === 'new' && !user.role) {
         this.server.to('managers').emit('newChat', {
           chatId: chat.id,
-          userId: chat.userId,
-          isAnonymous: !chat.userId,
+          user: user.userId ? { id: user.userId } : { sessionId: user.sessionId },
         })
-
-        // Отправляем push уведомление
-        await this.notificationsService.notifyNewChat(chat)
       }
 
-      this.logger.log(`User ${userKey} connected to chat ${chat.id}`, 'ChatGateway')
+      this.logger.log(`Client connected: ${client.id}`, 'ChatGateway')
     } catch (error) {
-      this.logger.error('Connection error:', error, 'ChatGateway')
+      this.logger.error(
+        'Connection error:',
+        error instanceof Error ? error.message : String(error),
+        'ChatGateway',
+      )
       client.disconnect()
     }
   }
 
-  async handleDisconnect(client: Socket) {
+  async handleDisconnect(client: Socket): Promise<void> {
     try {
-      const user: SocketUser = client.data.user
-      if (!user) return
+      const userKey = this.socketToUser.get(client.id)
 
-      const userKey = user.isAnonymous ? user.sessionId! : user.userId!
-      const chatId = this.socketChats.get(client.id)
-
-      // Удаляем сокет из мапы
-      const userSocketSet = this.userSockets.get(userKey)
-      if (userSocketSet) {
-        userSocketSet.delete(client.id)
-        if (userSocketSet.size === 0) {
-          this.userSockets.delete(userKey)
-
-          // Очищаем typing статус
-          if (chatId) {
-            await this.chatService.setTyping(chatId, userKey, false)
-            this.server.to(`chat:${chatId}`).emit('typing', {
-              userId: userKey,
-              isTyping: false,
-            })
+      if (userKey) {
+        // Удаляем socket из коллекций
+        const userSocketSet = this.userSockets.get(userKey)
+        if (userSocketSet) {
+          userSocketSet.delete(client.id)
+          if (userSocketSet.size === 0) {
+            this.userSockets.delete(userKey)
           }
         }
+
+        // Если это был менеджер
+        const managerSocketSet = this.managerSockets.get(userKey)
+        if (managerSocketSet) {
+          managerSocketSet.delete(client.id)
+          if (managerSocketSet.size === 0) {
+            this.managerSockets.delete(userKey)
+          }
+        }
+
+        this.socketToUser.delete(client.id)
       }
 
-      this.socketChats.delete(client.id)
-      this.logger.log(`User ${userKey} disconnected`, 'ChatGateway')
+      this.logger.log(`Client disconnected: ${client.id}`, 'ChatGateway')
     } catch (error) {
-      this.logger.error('Disconnect error:', error, 'ChatGateway')
+      this.logger.error(
+        'Disconnect error:',
+        error instanceof Error ? error.message : String(error),
+        'ChatGateway',
+      )
     }
   }
 
   @SubscribeMessage('sendMessage')
-  async handleSendMessage(@MessageBody() dto: SendMessageDto, @ConnectedSocket() client: Socket) {
+  async handleSendMessage(
+    @MessageBody() dto: SendMessageDto & { chatId: string },
+    @ConnectedSocket() client: Socket,
+  ): Promise<void> {
     try {
-      const user: SocketUser = client.data.user
-      const chatId = this.socketChats.get(client.id)
-
-      if (!chatId) {
-        throw new WsException('Chat not found')
+      const userKey = this.socketToUser.get(client.id)
+      if (!userKey) {
+        throw new WsException('Unauthorized')
       }
 
       // Определяем тип отправителя
+      const user = await this.getUserFromSocket(client)
       const senderType = user.role ? SenderType.MANAGER : SenderType.CUSTOMER
-      const senderId = user.isAnonymous ? undefined : user.userId
 
       // Сохраняем сообщение
-      const message = await this.chatService.saveMessage(chatId, senderId, senderType, dto)
-      const formattedMessage = this.formatMessageResponse(message, user)
+      const message = await this.chatService.saveMessage(dto.chatId, user.userId, senderType, dto)
 
-      // Отправляем сообщение всем в комнате чата
-      this.server.to(`chat:${chatId}`).emit('message', formattedMessage)
-
-      // Обновляем статус чата если нужно
-      const chat = await this.chatService.getChat(chatId)
+      // Проверяем и обновляем статус чата
+      const chat = await this.chatService.getChat(dto.chatId)
       if (chat?.status.code === 'new' && senderType === SenderType.CUSTOMER) {
-        await this.chatService.updateChatStatus(chatId, 'in_progress')
-        this.server.to(`chat:${chatId}`).emit('statusChanged', {
-          chatId,
-          status: 'in_progress',
+        // Уведомляем менеджеров о новом сообщении в новом чате
+        this.server.to('managers').emit('newMessage', {
+          chatId: dto.chatId,
+          message: this.formatMessage(message),
         })
       }
 
-      // Определяем имя отправителя
-      let senderName = 'Неизвестный'
+      // Отправляем сообщение всем участникам чата
+      const formattedMessage = this.formatMessage(message)
+
+      // Добавляем информацию об отправителе
       if (senderType === SenderType.CUSTOMER) {
-        const chat = await this.chatService.getChat(chatId)
+        const chat = await this.chatService.getChat(dto.chatId)
         if (chat?.user) {
-          senderName = chat.user.firstName || chat.user.phone
-        } else {
-          senderName = 'Гость'
+          formattedMessage.sender = {
+            id: chat.user.id,
+            name: chat.user.firstName || chat.user.phone,
+            role: 'customer',
+          }
         }
       } else if (senderType === SenderType.MANAGER) {
         const manager = await this.prisma.user.findUnique({
-          where: { id: senderId },
+          where: { id: user.userId },
         })
-        senderName = manager?.firstName || 'Менеджер'
+        if (manager) {
+          formattedMessage.sender = {
+            id: manager.id,
+            name: manager.firstName
+              ? `${manager.firstName} ${manager.lastName || ''}`.trim()
+              : 'Менеджер',
+            role: 'manager',
+          }
+        }
       }
 
-      // Отправляем push уведомление
-      await this.notificationsService.notifyNewMessage(message, senderName)
-
-      // Очищаем typing статус
-      const userKey = user.isAnonymous ? user.sessionId! : user.userId!
-      await this.chatService.setTyping(chatId, userKey, false)
-
-      this.logger.logBusinessEvent('message_sent', senderId, {
-        chatId,
-        messageType: dto.messageType,
-        senderType,
-      })
+      this.server.to(`chat:${dto.chatId}`).emit('message', formattedMessage)
     } catch (error) {
-      this.logger.error('Send message error:', error, 'ChatGateway')
+      this.logger.error(
+        'Send message error:',
+        error instanceof Error ? error.message : String(error),
+        'ChatGateway',
+      )
       throw new WsException('Failed to send message')
     }
   }
 
   @SubscribeMessage('typing')
-  async handleTyping(@MessageBody() dto: TypingDto, @ConnectedSocket() client: Socket) {
+  async handleTyping(
+    @MessageBody() data: { chatId: string; isTyping: boolean },
+    @ConnectedSocket() client: Socket,
+  ): Promise<void> {
     try {
-      const user: SocketUser = client.data.user
-      const chatId = this.socketChats.get(client.id)
+      const userKey = this.socketToUser.get(client.id)
+      if (!userKey) return
 
-      if (!chatId) {
-        throw new WsException('Chat not found')
-      }
+      const user = await this.getUserFromSocket(client)
 
-      const userKey = user.isAnonymous ? user.sessionId! : user.userId!
-      await this.chatService.setTyping(chatId, userKey, dto.isTyping)
+      // Устанавливаем или убираем индикатор набора
+      await this.chatService.setTyping(data.chatId, user.userId || userKey, data.isTyping)
 
-      // Отправляем всем кроме отправителя
-      client.to(`chat:${chatId}`).emit('typing', {
-        userId: userKey,
-        isTyping: dto.isTyping,
-        isManager: !!user.role,
+      // Отправляем всем в чате, кроме отправителя
+      client.to(`chat:${data.chatId}`).emit('typing', {
+        chatId: data.chatId,
+        userId: user.userId || userKey,
+        isTyping: data.isTyping,
       })
     } catch (error) {
-      this.logger.error('Typing error:', error, 'ChatGateway')
+      this.logger.error(
+        'Typing error:',
+        error instanceof Error ? error.message : String(error),
+        'ChatGateway',
+      )
     }
   }
 
   @SubscribeMessage('markAsRead')
   async handleMarkAsRead(
-    @MessageBody() data: { messageIds: string[] },
+    @MessageBody() data: { chatId: string; messageId?: string },
     @ConnectedSocket() client: Socket,
-  ) {
+  ): Promise<void> {
     try {
-      const chatId = this.socketChats.get(client.id)
-      if (!chatId) {
-        throw new WsException('Chat not found')
-      }
+      const userKey = this.socketToUser.get(client.id)
+      if (!userKey) return
 
-      // TODO: Implement read receipts if needed
-      client.to(`chat:${chatId}`).emit('messagesRead', {
-        messageIds: data.messageIds,
-        userId: client.data.user.userId || client.data.user.sessionId,
+      // TODO: Implement mark as read logic
+
+      // Уведомляем отправителя о прочтении
+      client.to(`chat:${data.chatId}`).emit('messagesRead', {
+        chatId: data.chatId,
+        messageId: data.messageId,
+        readBy: userKey,
       })
     } catch (error) {
-      this.logger.error('Mark as read error:', error, 'ChatGateway')
+      this.logger.error(
+        'Mark as read error:',
+        error instanceof Error ? error.message : String(error),
+        'ChatGateway',
+      )
     }
   }
 
-  // Вспомогательный метод для отправки сообщения в конкретный чат
-  async sendMessageToChat(chatId: string, message: any) {
-    this.server.to(`chat:${chatId}`).emit('message', message)
-  }
+  // Helper методы
 
-  // Метод для отправки системных уведомлений
-  async sendSystemMessage(chatId: string, content: string) {
+  /**
+   * Создать системное сообщение
+   */
+  async createSystemMessage(chatId: string, content: string): Promise<void> {
     const message = await this.chatService.saveMessage(chatId, undefined, SenderType.SYSTEM, {
       content,
       messageType: MessageType.SYSTEM,
     })
 
-    this.server.to(`chat:${chatId}`).emit('message', {
-      ...message,
-      sender: { name: 'Система', role: 'system' },
+    this.server.to(`chat:${chatId}`).emit('message', this.formatMessage(message))
+  }
+
+  /**
+   * Назначить менеджера на чат
+   */
+  async assignManagerToChat(chatId: string, managerId: string): Promise<void> {
+    await this.chatService.assignManager(chatId, managerId)
+
+    // Присоединяем менеджера к комнате чата
+    const managerSockets = this.managerSockets.get(managerId)
+    if (managerSockets) {
+      managerSockets.forEach((socketId) => {
+        const socket = this.server.sockets.sockets.get(socketId)
+        if (socket) {
+          socket.join(`chat:${chatId}`)
+        }
+      })
+    }
+
+    // Уведомляем всех в чате
+    this.server.to(`chat:${chatId}`).emit('managerAssigned', {
+      chatId,
+      managerId,
     })
   }
 
-  // Обновляем метод formatMessageResponse для поддержки карточек товаров
-  private formatMessageResponse(message: any, user: SocketUser) {
-    let senderName = 'Неизвестный'
+  /**
+   * Закрыть чат
+   */
+  async closeChat(chatId: string): Promise<void> {
+    await this.chatService.updateChatStatus(chatId, 'closed')
 
-    if (message.senderType === SenderType.CUSTOMER) {
-      if (message.chat?.user) {
-        const u = message.chat.user
-        senderName = u.firstName ? `${u.firstName} ${u.lastName || ''}`.trim() : u.phone
-      } else {
-        senderName = 'Гость'
+    // Уведомляем всех в чате
+    this.server.to(`chat:${chatId}`).emit('chatClosed', { chatId })
+
+    // Удаляем всех из комнаты
+    const room = this.server.sockets.adapter.rooms.get(`chat:${chatId}`)
+    if (room) {
+      room.forEach((socketId) => {
+        const socket = this.server.sockets.sockets.get(socketId)
+        if (socket) {
+          socket.leave(`chat:${chatId}`)
+        }
+      })
+    }
+  }
+
+  /**
+   * Получить информацию о пользователе из socket
+   */
+  private async getUserFromSocket(client: Socket): Promise<any> {
+    const token = client.handshake.auth.token || client.handshake.headers.authorization
+    const anonymousToken = client.handshake.headers['x-anonymous-token']
+
+    if (token) {
+      try {
+        const payload = this.jwtService.verify(token.replace('Bearer ', ''), {
+          secret: this.configService.get('jwt.access.secret'),
+        })
+        return {
+          userId: payload.userId,
+          role: payload.role,
+          type: 'authenticated',
+        }
+      } catch {
+        throw new WsException('Invalid token')
       }
-    } else if (message.senderType === SenderType.MANAGER && message.chat?.manager) {
-      const m = message.chat.manager
-      senderName = m.firstName ? `${m.firstName} ${m.lastName || ''}`.trim() : 'Менеджер'
-    } else if (message.senderType === SenderType.SYSTEM) {
-      senderName = 'Система'
+    } else if (anonymousToken) {
+      try {
+        const anonymousTokenValue = Array.isArray(anonymousToken)
+          ? anonymousToken[0]
+          : anonymousToken
+        const payload = this.jwtService.verify(anonymousTokenValue, {
+          secret: this.configService.get('jwt.anonymous.secret'),
+        })
+        return {
+          sessionId: payload.sessionId,
+          type: 'anonymous',
+        }
+      } catch {
+        throw new WsException('Invalid anonymous token')
+      }
     }
 
-    const response: any = {
+    throw new WsException('No authentication provided')
+  }
+
+  /**
+   * Форматировать сообщение для отправки
+   */
+  private formatMessage(message: any): MessageResponseDto {
+    const formatted: MessageResponseDto = {
       id: message.id,
       chatId: message.chatId,
       senderId: message.senderId,
@@ -303,103 +414,74 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       content: message.content,
       metadata: message.metadata,
       createdAt: message.createdAt,
-      sender: {
-        id: message.senderId || 'system',
-        name: senderName,
-        role: message.senderType.toLowerCase(),
-      },
     }
 
-    // Добавляем карточки товаров если есть
-    if (message.chatProducts && message.chatProducts.length > 0) {
-      response.chatProducts = message.chatProducts.map((cp: any) => ({
-        id: cp.id,
-        name: cp.name,
-        brand: cp.brand,
-        sku: cp.sku,
-        price: Number(cp.price),
-        comparePrice: cp.comparePrice ? Number(cp.comparePrice) : undefined,
-        isOriginal: cp.isOriginal,
-        deliveryDays: cp.deliveryDays,
-        description: cp.description,
-        images: cp.images || [],
-        createdAt: cp.createdAt,
-      }))
+    // Добавляем информацию о карточке товара если есть
+    if (message.messageType === MessageType.PRODUCT_CARD && message.chatProducts?.[0]) {
+      formatted.chatProducts = [
+        {
+          id: message.chatProducts[0].id,
+          name: message.chatProducts[0].name,
+          brand: message.chatProducts[0].brand,
+          sku: message.chatProducts[0].sku,
+          price: Number(message.chatProducts[0].price),
+          comparePrice: message.chatProducts[0].comparePrice
+            ? Number(message.chatProducts[0].comparePrice)
+            : undefined,
+          isOriginal: message.chatProducts[0].isOriginal,
+          deliveryDays: message.chatProducts[0].deliveryDays,
+          description: message.chatProducts[0].description,
+          images: message.chatProducts[0].images || [],
+          createdAt: message.chatProducts[0].createdAt,
+        },
+      ]
     }
 
-    return response
+    return formatted
   }
 
-  // Добавляем новый обработчик события
-
-  @SubscribeMessage('sendProductCard')
-  @UseGuards(WsAuthGuard)
-  async handleSendProductCard(
-    @MessageBody() dto: SendProductCardDto,
-    @ConnectedSocket() client: Socket,
-  ) {
+  /**
+   * Отправить карточку товара
+   */
+  async sendProductCard(
+    chatId: string,
+    managerId: string,
+    content: string,
+    productData: any,
+  ): Promise<void> {
     try {
-      const user: SocketUser = client.data.user
-      const chatId = this.socketChats.get(client.id)
-
-      if (!chatId) {
-        throw new WsException('Chat not found')
-      }
-
-      // Только менеджеры могут отправлять карточки товаров
-      if (!user.role || user.role === UserRole.CUSTOMER) {
-        throw new WsException('Only managers can send product cards')
-      }
-
-      const senderId = user.userId
-
-      // Создаем сообщение с карточкой товара
       const message = await this.chatService.createProductCardMessage(
         chatId,
-        senderId,
+        managerId,
         SenderType.MANAGER,
-        dto.content,
-        dto.product,
+        content,
+        productData,
       )
 
-      const formattedMessage = this.formatMessageResponse(message, user)
+      const formattedMessage = this.formatMessage(message)
 
-      // Отправляем сообщение всем в комнате чата
-      this.server.to(`chat:${chatId}`).emit('productCard', formattedMessage)
-
-      // Уведомляем клиента о новом товарном предложении
-      const customerSocketIds = this.getCustomerSocketsInChat(chatId)
-      customerSocketIds.forEach((socketId) => {
-        this.server.to(socketId).emit('newProductOffer', {
-          chatId,
-          product: message.chatProducts[0],
-          message: formattedMessage,
-        })
+      // Добавляем информацию об отправителе
+      const manager = await this.prisma.user.findUnique({
+        where: { id: managerId },
       })
-
-      this.logger.logBusinessEvent('product_card_sent_ws', senderId, {
-        chatId,
-        productSku: dto.product.sku,
-      })
-    } catch (error) {
-      this.logger.error('Send product card error:', error, 'ChatGateway')
-      throw new WsException('Failed to send product card')
-    }
-  }
-
-  // Добавляем вспомогательный метод
-  private getCustomerSocketsInChat(chatId: string): string[] {
-    const sockets: string[] = []
-
-    for (const [socketId, chatIdInMap] of this.socketChats) {
-      if (chatIdInMap === chatId) {
-        const socket = this.server.sockets.sockets.get(socketId)
-        if (socket && !socket.data.user.role) {
-          sockets.push(socketId)
+      if (manager) {
+        formattedMessage.sender = {
+          id: manager.id,
+          name: manager.firstName
+            ? `${manager.firstName} ${manager.lastName || ''}`.trim()
+            : 'Менеджер',
+          role: 'manager',
         }
       }
-    }
 
-    return sockets
+      this.server.to(`chat:${chatId}`).emit('message', formattedMessage)
+    } catch (error) {
+      this.logger.error(
+        'Send product card error:',
+        error instanceof Error ? error.message : String(error),
+        'ChatGateway',
+      )
+      throw new WsException('Failed to send product card')
+    }
   }
 }

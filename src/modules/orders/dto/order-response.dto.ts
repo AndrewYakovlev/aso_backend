@@ -1,60 +1,11 @@
 // src/modules/orders/dto/order-response.dto.ts
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
-import { Type, plainToInstance } from 'class-transformer'
-import { OrderStatus, DeliveryMethod, PaymentMethod } from '@prisma/client'
-
-export class OrderItemResponseDto {
-  @ApiProperty()
-  id!: string
-
-  @ApiProperty()
-  orderId!: string
-
-  @ApiPropertyOptional()
-  productId?: string | null
-
-  @ApiPropertyOptional()
-  productName?: string
-
-  @ApiPropertyOptional()
-  productSku?: string
-
-  @ApiPropertyOptional()
-  chatProductId?: string | null
-
-  @ApiProperty()
-  quantity!: number
-
-  @ApiProperty({
-    description: 'Цена за единицу',
-  })
-  price!: number
-
-  @ApiProperty({
-    description: 'Общая стоимость',
-  })
-  total!: number
-}
-
-export class OrderStatusResponseDto {
-  @ApiProperty()
-  id!: string
-
-  @ApiProperty()
-  name!: string
-
-  @ApiProperty()
-  code!: string
-
-  @ApiPropertyOptional()
-  color?: string | null
-
-  @ApiPropertyOptional()
-  description?: string | null
-
-  @ApiProperty()
-  canCancelOrder!: boolean
-}
+import { UserResponseDto } from '../../users/dto/user-response.dto'
+import { OrderItemResponseDto } from './order-item-response.dto'
+import { OrderStatusResponseDto } from './order-status-response.dto'
+import { DeliveryMethodResponseDto } from './delivery-method-response.dto'
+import { PaymentMethodResponseDto } from './payment-method-response.dto'
+import { ShippingAddressDto } from './shipping-address.dto'
 
 export class OrderResponseDto {
   @ApiProperty()
@@ -66,63 +17,47 @@ export class OrderResponseDto {
   @ApiProperty()
   userId!: string
 
+  @ApiProperty({ type: UserResponseDto })
+  user!: UserResponseDto
+
   @ApiProperty()
   statusId!: string
 
   @ApiProperty({ type: OrderStatusResponseDto })
-  @Type(() => OrderStatusResponseDto)
   status!: OrderStatusResponseDto
 
-  @ApiProperty({
-    description: 'Сумма товаров',
-  })
+  @ApiProperty()
   subtotal!: number
 
-  @ApiProperty({
-    description: 'Сумма скидки',
-  })
+  @ApiProperty()
   discountAmount!: number
 
-  @ApiProperty({
-    description: 'Стоимость доставки',
-  })
+  @ApiProperty()
   shippingAmount!: number
 
-  @ApiProperty({
-    description: 'Итоговая сумма',
-  })
+  @ApiProperty()
   totalAmount!: number
 
   @ApiProperty()
   deliveryMethodId!: string
 
-  @ApiProperty()
-  deliveryMethod!: DeliveryMethod
+  @ApiProperty({ type: DeliveryMethodResponseDto })
+  deliveryMethod!: DeliveryMethodResponseDto
 
   @ApiProperty()
   paymentMethodId!: string
 
-  @ApiProperty()
-  paymentMethod!: PaymentMethod
+  @ApiProperty({ type: PaymentMethodResponseDto })
+  paymentMethod!: PaymentMethodResponseDto
+
+  @ApiPropertyOptional({ type: ShippingAddressDto })
+  shippingAddress?: ShippingAddressDto
 
   @ApiPropertyOptional()
-  shippingAddress?: any
+  comment?: string
 
   @ApiPropertyOptional()
-  comment?: string | null
-
-  @ApiPropertyOptional()
-  promoCodeId?: string | null
-
-  @ApiPropertyOptional()
-  promoCode?: any
-
-  @ApiProperty({
-    description: 'Товары в заказе',
-    type: [OrderItemResponseDto],
-  })
-  @Type(() => OrderItemResponseDto)
-  items!: OrderItemResponseDto[]
+  promoCodeId?: string
 
   @ApiProperty()
   createdAt!: Date
@@ -130,36 +65,44 @@ export class OrderResponseDto {
   @ApiProperty()
   updatedAt!: Date
 
-  @ApiProperty({
-    description: 'Можно ли отменить заказ',
+  @ApiProperty({ type: [OrderItemResponseDto] })
+  items!: OrderItemResponseDto[]
+
+  @ApiPropertyOptional({
+    description: 'URL для оплаты заказа',
+    example: 'https://payment.example.com/pay/12345',
   })
-  canCancel!: boolean
+  paymentUrl?: string
 
-  static fromEntity(entity: any): OrderResponseDto {
-    const plain = {
-      ...entity,
-      subtotal: Number(entity.subtotal),
-      discountAmount: Number(entity.discountAmount),
-      shippingAmount: Number(entity.shippingAmount),
-      totalAmount: Number(entity.totalAmount),
-      canCancel: entity.status?.canCancelOrder || false,
-      items:
-        entity.items?.map((item: any) => ({
-          ...item,
-          price: Number(item.price),
-          total: Number(item.total),
-          productName: item.product?.name || item.chatProduct?.name,
-          productSku: item.product?.sku || item.chatProduct?.sku,
-        })) || [],
+  static fromEntity(order: any): OrderResponseDto {
+    return {
+      id: order.id,
+      orderNumber: order.orderNumber,
+      userId: order.userId,
+      user: UserResponseDto.fromEntity(order.user),
+      statusId: order.statusId,
+      status: OrderStatusResponseDto.fromEntity(order.status),
+      subtotal: Number(order.subtotal),
+      discountAmount: Number(order.discountAmount),
+      shippingAmount: Number(order.shippingAmount),
+      totalAmount: Number(order.totalAmount),
+      deliveryMethodId: order.deliveryMethodId,
+      deliveryMethod: DeliveryMethodResponseDto.fromEntity(order.deliveryMethod),
+      paymentMethodId: order.paymentMethodId,
+      paymentMethod: PaymentMethodResponseDto.fromEntity(order.paymentMethod),
+      shippingAddress: order.shippingAddress,
+      comment: order.comment,
+      promoCodeId: order.promoCodeId,
+      createdAt: order.createdAt,
+      updatedAt: order.updatedAt,
+      items: order.items?.map((item: any) => OrderItemResponseDto.fromEntity(item)) || [],
     }
-
-    return plainToInstance(OrderResponseDto, plain)
   }
 }
 
 export class CreateOrderResponseDto extends OrderResponseDto {
   @ApiPropertyOptional({
-    description: 'URL для перехода к оплате (если метод оплаты онлайн)',
+    description: 'URL для оплаты заказа (для онлайн методов оплаты)',
   })
   paymentUrl?: string
 }
