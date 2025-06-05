@@ -23,15 +23,18 @@ model User {
   updatedAt        DateTime       @updatedAt
   deletedAt        DateTime?
 
-  carts              Cart[]
-  orders             Order[]
-  chats              Chat[]
-  managedChats       Chat[]           @relation("ManagerChats")
-  favorites          Favorite[]
-  viewHistory        ViewHistory[]
-  personalPromoCodes PromoCode[]
-  promoCodeUsage     PromoCodeUsage[]
-  orderStatusLogs    OrderStatusLog[]
+  carts                Cart[]
+  orders               Order[]
+  chats                Chat[]
+  managedChats         Chat[]                @relation("ManagerChats")
+  favorites            Favorite[]
+  viewHistory          ViewHistory[]
+  personalPromoCodes   PromoCode[]
+  promoCodeUsage       PromoCodeUsage[]
+  orderStatusLogs      OrderStatusLog[]
+  PushSubscription     PushSubscription[]
+  NotificationSettings NotificationSettings?
+  NotificationLog      NotificationLog[]
 
   @@index([phone])
   @@index([email])
@@ -58,6 +61,72 @@ model AnonymousUser {
   viewHistory ViewHistory[]
 
   @@index([sessionId])
+}
+
+// Push подписки пользователей
+model PushSubscription {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint   String   @unique
+  p256dh     String // Public key
+  auth       String // Auth secret
+  userAgent  String?
+  deviceName String? // Для идентификации устройства
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  lastUsedAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([isActive])
+}
+
+// Настройки уведомлений пользователя
+model NotificationSettings {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Типы уведомлений
+  newChat            Boolean @default(true)
+  newMessage         Boolean @default(true)
+  chatAssigned       Boolean @default(true)
+  chatStatusChanged  Boolean @default(true)
+  orderStatusChanged Boolean @default(true)
+
+  // Расписание (для менеджеров)
+  enableSchedule   Boolean @default(false)
+  scheduleStart    String? // Время начала рабочего дня (HH:mm)
+  scheduleEnd      String? // Время окончания рабочего дня (HH:mm)
+  scheduleTimezone String  @default("Europe/Moscow")
+  scheduleDays     Json? // Массив дней недели [1,2,3,4,5]
+
+  // Общие настройки
+  soundEnabled     Boolean @default(true)
+  vibrationEnabled Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Журнал отправленных уведомлений
+model NotificationLog {
+  id             String    @id @default(cuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id])
+  type           String // new_chat, new_message, etc.
+  title          String
+  body           String
+  data           Json? // Дополнительные данные
+  subscriptionId String? // ID подписки через которую отправлено
+  status         String // sent, failed, clicked
+  errorMessage   String?
+  sentAt         DateTime  @default(now())
+  clickedAt      DateTime?
+
+  @@index([userId, sentAt])
+  @@index([type])
 }
 
 // Категории товаров
@@ -424,13 +493,26 @@ model ChatProduct {
   isOriginal   Boolean  @default(true)
   deliveryDays Int?
   description  String?
-  images       Json // Массив URL изображений
   createdAt    DateTime @default(now())
 
+  images     ChatProductImage[]
   cartItems  CartItem[]
   orderItems OrderItem[]
 
   @@index([messageId])
+}
+
+// Новая модель для изображений карточек товаров из чата
+model ChatProductImage {
+  id            String      @id @default(cuid())
+  chatProductId String
+  chatProduct   ChatProduct @relation(fields: [chatProductId], references: [id], onDelete: Cascade)
+  url           String
+  alt           String?
+  sortOrder     Int         @default(0)
+  createdAt     DateTime    @default(now())
+
+  @@index([chatProductId])
 }
 
 // Статусы чатов

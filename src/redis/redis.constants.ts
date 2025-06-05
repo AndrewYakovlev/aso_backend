@@ -36,6 +36,7 @@ export const CacheKeys = {
   // Vehicles
   VEHICLES: 'vehicles:',
   VEHICLE_APPS: 'vehicle-apps:',
+  PROMO: 'promo:',
 } as const
 
 export const CacheTTL = {
@@ -58,13 +59,15 @@ export const CacheTTL = {
   SEO_SITEMAP: 24 * 60 * 60, // 24 часа
 
   // Пользовательские данные
-  CART: 7 * 24 * 60 * 60, // 7 дней
+  CART: 5 * 60, // 5 минут
   FAVORITES: 30 * 24 * 60 * 60, // 30 дней
   HISTORY: 7 * 24 * 60 * 60, // 7 дней
 
   // Чат
   CHAT_TYPING: 5, // 5 секунд
   CHAT_MESSAGE: 60 * 60, // 1 час
+
+  PROMO: 60 * 60, // 1 час
 } as const
 
 export type CacheKey = (typeof CacheKeys)[keyof typeof CacheKeys]

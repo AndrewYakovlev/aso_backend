@@ -1,0 +1,300 @@
+import { io } from 'socket.io-client'
+
+// Для авторизованных пользователей
+const socket = io('http://localhost:4000/chat', {
+  auth: {
+    token: localStorage.getItem('accessToken'),
+  },
+  extraHeaders: {
+    Authorization: `Bearer ${localStorage.getItem('accessToken')}`,
+  },
+})
+
+// Для анонимных пользователей
+const socket = io('http://localhost:4000/chat', {
+  extraHeaders: {
+    'x-anonymous-token': localStorage.getItem('anonymousToken'),
+  },
+})
+
+// События
+socket.on('connect', () => {
+  console.log('Connected to chat')
+})
+
+socket.on('chatHistory', (data) => {
+  console.log('Chat history:', data)
+})
+
+socket.on('message', (message) => {
+  console.log('New message:', message)
+})
+
+socket.on('typing', (data) => {
+  console.log('User typing:', data)
+})
+
+// Отправка сообщения
+socket.emit('sendMessage', {
+  content: 'Привет!',
+  messageType: 'TEXT',
+})
+
+// Индикатор набора
+socket.emit('typing', { isTyping: true })
+
+// Отправка карточки товара через WebSocket
+socket.emit('sendProductCard', {
+  content: 'Рекомендую этот товар для вашего автомобиля',
+  product: {
+    name: 'Моторное масло Castrol EDGE 5W-40',
+    brand: 'Castrol',
+    sku: 'CAST-EDGE-5W40-4L',
+    price: 3500,
+    comparePrice: 4000,
+    isOriginal: true,
+    deliveryDays: 3,
+    description: 'Синтетическое моторное масло для современных двигателей',
+    images: [
+      {
+        url: 'https://example.com/castrol-1.jpg',
+        alt: 'Castrol EDGE 5W-40 фронт',
+        sortOrder: 0,
+      },
+      {
+        url: 'https://example.com/castrol-2.jpg',
+        alt: 'Castrol EDGE 5W-40 этикетка',
+        sortOrder: 1,
+      },
+    ],
+  },
+})
+
+// Получение карточки товара
+socket.on('productCard', (message) => {
+  console.log('Новая карточка товара:', message)
+  if (message.chatProducts && message.chatProducts.length > 0) {
+    const product = message.chatProducts[0]
+    console.log('Товар:', product)
+
+    // Показываем кнопку "Добавить в корзину"
+    showAddToCartButton(product.id)
+  }
+})
+
+// Добавление в корзину через REST API
+async function addToCart(chatProductId, quantity = 1) {
+  const response = await fetch(`/api/v1/chat/products/${chatProductId}/add-to-cart`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ quantity }),
+  })
+
+  if (response.ok) {
+    console.log('Товар добавлен в корзину')
+  }
+}
+
+
+
+
+
+
+
+
+# Service Worker для клиента
+
+
+// public/sw.js
+self.addEventListener('push', function(event) {
+  if (!event.data) return
+
+  const data = event.data.json()
+  
+  const options = {
+    body: data.body,
+    icon: data.icon || '/icon-192x192.png',
+    badge: data.badge || '/badge-72x72.png',
+    image: data.image,
+    tag: data.tag,
+    data: data.data,
+    actions: data.actions,
+    requireInteraction: data.requireInteraction || false,
+    silent: data.silent || false,
+    vibrate: data.vibrate,
+  }
+
+  event.waitUntil(
+    self.registration.showNotification(data.title, options)
+  )
+})
+
+self.addEventListener('notificationclick', function(event) {
+  event.notification.close()
+
+  const data = event.notification.data || {}
+  let url = data.url || '/'
+
+  if (event.action === 'reply') {
+    url = data.url || `/chat/${data.chatId}`
+  } else if (event.action === 'dismiss') {
+    return
+  }
+
+  event.waitUntil(
+    clients.openWindow(url)
+  )
+
+  // Отправляем статистику клика
+  if (data.notificationId) {
+    fetch(`/api/v1/notifications/clicked/${data.notificationId}`, {
+      method: 'POST',
+    })
+  }
+})
+
+
+
+
+### Пример использования на клиенте
+
+// utils/notifications.js
+export class NotificationManager {
+  constructor() {
+    this.swRegistration = null
+    this.subscription = null
+  }
+
+  async init() {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      console.log('Push notifications not supported')
+      return false
+    }
+
+    try {
+      // Регистрируем Service Worker
+      this.swRegistration = await navigator.serviceWorker.register('/sw.js')
+      console.log('Service Worker registered')
+
+      // Проверяем существующую подписку
+      this.subscription = await this.swRegistration.pushManager.getSubscription()
+      
+      return true
+    } catch (error) {
+      console.error('Failed to initialize notifications:', error)
+      return false
+    }
+  }
+
+  async subscribe() {
+    try {
+      // Получаем VAPID ключ с сервера
+      const response = await fetch('/api/v1/notifications/vapid-public-key', {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`
+        }
+      })
+      const { publicKey } = await response.json()
+
+      // Подписываемся на push
+      this.subscription = await this.swRegistration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: this.urlBase64ToUint8Array(publicKey)
+      })
+
+      // Отправляем подписку на сервер
+      await fetch('/api/v1/notifications/subscribe', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`
+        },
+        body: JSON.stringify({
+          endpoint: this.subscription.endpoint,
+          keys: {
+            p256dh: btoa(String.fromCharCode(...new Uint8Array(this.subscription.getKey('p256dh')))),
+            auth: btoa(String.fromCharCode(...new Uint8Array(this.subscription.getKey('auth'))))
+          },
+          userAgent: navigator.userAgent,
+          deviceName: this.getDeviceName()
+        })
+      })
+
+      console.log('Push subscription successful')
+      return true
+    } catch (error) {
+      console.error('Failed to subscribe:', error)
+      return false
+    }
+  }
+
+  async unsubscribe() {
+    try {
+      if (this.subscription) {
+        await this.subscription.unsubscribe()
+        
+        // Удаляем подписку с сервера
+        await fetch(`/api/v1/notifications/subscribe/${encodeURIComponent(this.subscription.endpoint)}`, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('accessToken')}`
+          }
+        })
+      }
+      
+      this.subscription = null
+      return true
+    } catch (error) {
+      console.error('Failed to unsubscribe:', error)
+      return false
+    }
+  }
+
+  urlBase64ToUint8Array(base64String) {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4)
+    const base64 = (base64String + padding)
+      .replace(/\-/g, '+')
+      .replace(/_/g, '/')
+    
+    const rawData = window.atob(base64)
+    const outputArray = new Uint8Array(rawData.length)
+    
+    for (let i = 0; i < rawData.length; ++i) {
+      outputArray[i] = rawData.charCodeAt(i)
+    }
+    
+    return outputArray
+  }
+
+  getDeviceName() {
+    const userAgent = navigator.userAgent
+    if (/android/i.test(userAgent)) return 'Android'
+    if (/iPad|iPhone|iPod/.test(userAgent)) return 'iOS'
+    if (/Win/.test(userAgent)) return 'Windows'
+    if (/Mac/.test(userAgent)) return 'macOS'
+    if (/Linux/.test(userAgent)) return 'Linux'
+    return 'Unknown'
+  }
+}
+
+// Использование
+const notificationManager = new NotificationManager()
+
+// При входе пользователя
+async function onLogin() {
+  await notificationManager.init()
+  
+  // Запрашиваем разрешение
+  const permission = await Notification.requestPermission()
+  if (permission === 'granted') {
+    await notificationManager.subscribe()
+  }
+}
+
+// При выходе
+async function onLogout() {
+  await notificationManager.unsubscribe()
+}

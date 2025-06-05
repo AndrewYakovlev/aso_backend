@@ -19,6 +19,11 @@ import { AllExceptionsFilter } from './common/filters/all-exceptions.filter'
 import { ResponseInterceptor } from './common/interceptors/response.interceptor'
 import { LoggerMiddleware } from './common/middleware/logger.middleware'
 import { VehicleApplicationsModule } from '@modules/vehicle-applications/vehicle-applications.module'
+import { CartModule } from '@modules/cart/cart.module'
+import { ScheduleModule } from '@nestjs/schedule'
+import { DiscountModule } from '@modules/discount/discount.module'
+import { OrdersModule } from '@modules/orders/orders.module'
+import { ChatModule } from '@modules/chat/chat.module'
 
 @Module({
   imports: [
@@ -32,6 +37,8 @@ import { VehicleApplicationsModule } from '@modules/vehicle-applications/vehicle
         abortEarly: false,
       },
     }),
+    ScheduleModule.forRoot(), // Для cron задач
+    CartModule,
     PrismaModule,
     RedisModule,
     LoggerModule,
@@ -44,10 +51,10 @@ import { VehicleApplicationsModule } from '@modules/vehicle-applications/vehicle
     VehiclesModule,
     SeoModule,
     VehicleApplicationsModule,
+    DiscountModule,
+    OrdersModule,
+    ChatModule,
     // Здесь будут подключаться остальные модули:
-    // OrdersModule,
-    // CartModule,
-    // ChatModule,
     // AdminModule,
     // ImportModule,
   ],
