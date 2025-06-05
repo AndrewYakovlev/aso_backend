@@ -10,7 +10,7 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common'
-import { ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger'
+import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiExtraModels } from '@nestjs/swagger'
 import { CartService } from './cart.service'
 import { AddToCartDto } from './dto/add-to-cart.dto'
 import { UpdateCartItemDto } from './dto/update-cart-item.dto'
@@ -19,9 +19,11 @@ import { RequireUser } from '../auth/decorators/require-user.decorator'
 import { CurrentUser } from '../auth/decorators/current-user.decorator'
 import { DiscountService } from '../discount/discount.service'
 import { CartCalculationResponseDto } from '../discount/dto/cart-calculation-response.dto'
+import { ChatProductResponseDto } from '@modules/chat/dto/chat-product.dto'
 
 @ApiTags('Cart')
 @Controller('cart')
+@ApiExtraModels(ChatProductResponseDto)
 export class CartController {
   constructor(
     private readonly cartService: CartService,

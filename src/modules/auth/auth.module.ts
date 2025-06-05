@@ -40,6 +40,7 @@ import { UsersModule } from '../users/users.module'
     JwtRefreshStrategy,
     AnonymousStrategy,
   ],
-  exports: [AuthService, TokenService],
+  // Добавляем JwtModule в массив exports
+  exports: [AuthService, TokenService, JwtModule],
 })
 export class AuthModule {}

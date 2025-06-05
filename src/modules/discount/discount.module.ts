@@ -4,7 +4,6 @@ import { DiscountService } from './discount.service'
 import { CartModule } from '../cart/cart.module'
 
 @Module({
-  imports: [CartModule],
   providers: [DiscountService],
   exports: [DiscountService],
 })

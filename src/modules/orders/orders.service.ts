@@ -6,7 +6,7 @@ import {
   ConflictException,
 } from '@nestjs/common'
 import { PrismaService } from '../../prisma/prisma.service'
-import { DeliveryMethod, Prisma, UserRole } from '@prisma/client'
+import { DeliveryMethod, Order, OrderStatus, Prisma, UserRole } from '@prisma/client'
 import { CreateOrderDto } from './dto/create-order.dto'
 import { OrderFiltersDto } from './dto/order-filters.dto'
 import { OrderResponseDto, CreateOrderResponseDto } from './dto/order-response.dto'
@@ -74,8 +74,8 @@ export class OrdersService {
 
       // Проверяем методы доставки и оплаты
       const [deliveryMethod, paymentMethod] = await Promise.all([
-        this.validateDeliveryMethod(dto.deliveryMethodId),
-        this.validatePaymentMethod(dto.paymentMethodId),
+        this.validateDeliveryMethod(dto.deliveryMethodId, calculation.total),
+        this.validatePaymentMethod(dto.paymentMethodId, calculation.total),
       ])
 
       // Рассчитываем стоимость доставки
@@ -125,13 +125,12 @@ export class OrdersService {
         })
 
         // Создаем элементы заказа
-        const orderItems = []
         for (const item of availableItems) {
           const calculatedItem = calculation.items.find((ci) => ci.cartItemId === item.id)
 
           if (!calculatedItem) continue
 
-          const orderItem = await tx.orderItem.create({
+          await tx.orderItem.create({
             data: {
               orderId: newOrder.id,
               productId: item.productId,
@@ -141,8 +140,6 @@ export class OrdersService {
               total: calculatedItem.total,
             },
           })
-
-          orderItems.push(orderItem)
 
           // Уменьшаем остатки для обычных товаров
           if (item.productId) {
@@ -202,12 +199,12 @@ export class OrdersService {
         return newOrder
       })
 
-      // Получаем полный заказ с связями
       const fullOrder = await this.prisma.order.findUniqueOrThrow({
         where: { id: order.id },
         include: this.getOrderInclude(),
       })
 
+      // Используем fromEntity из CreateOrderResponseDto для правильной типизации
       const response = CreateOrderResponseDto.fromEntity(fullOrder)
 
       // Если онлайн оплата, генерируем URL
@@ -215,14 +212,13 @@ export class OrdersService {
         response.paymentUrl = await this.generatePaymentUrl(fullOrder)
       }
 
-      // Отправляем уведомления (асинхронно)
       this.sendOrderNotifications(fullOrder).catch((error) => {
         this.logger.error('Ошибка отправки уведомлений о заказе', error)
       })
 
       return response
     } catch (error) {
-      PrismaErrorHelper.handleError(error)
+      PrismaErrorHelper.handleError(error as Error)
     }
   }
 
@@ -235,7 +231,6 @@ export class OrdersService {
   ): Promise<PaginatedResult<OrderResponseDto>> {
     const where: Prisma.OrderWhereInput = {}
 
-    // Если не админ/менеджер, показываем только свои заказы
     if (currentUserId && filters.userId !== currentUserId) {
       where.userId = currentUserId
     } else if (filters.userId) {
@@ -297,7 +292,6 @@ export class OrdersService {
       throw new NotFoundException('Заказ не найден')
     }
 
-    // Проверяем доступ
     if (currentUserId && order.userId !== currentUserId) {
       throw new NotFoundException('Заказ не найден')
     }
@@ -312,7 +306,6 @@ export class OrdersService {
     const today = new Date()
     const datePrefix = today.toISOString().slice(2, 10).replace(/-/g, '') // YYMMDD
 
-    // Находим последний заказ за сегодня
     const lastOrder = await tx.order.findFirst({
       where: {
         orderNumber: {
@@ -364,9 +357,19 @@ export class OrdersService {
           product: {
             include: {
               brand: true,
+              images: {
+                take: 1,
+                orderBy: { sortOrder: 'asc' as const },
+              },
             },
           },
-          chatProduct: true,
+          chatProduct: {
+            include: {
+              images: {
+                orderBy: { sortOrder: 'asc' as const },
+              },
+            },
+          },
         },
       },
       user: {
@@ -406,13 +409,13 @@ export class OrdersService {
   }
 
   /**
-   * Рассчитать стоимость доставки
+   * Рассчитать стоимость доставки (приватный метод)
    */
   private async calculateShipping(
     deliveryMethod: DeliveryMethod,
     orderAmount: number,
   ): Promise<number> {
-    if (!deliveryMethod.minAmount) {
+    if (deliveryMethod.minAmount === null || deliveryMethod.minAmount === undefined) {
       return Number(deliveryMethod.price)
     }
 
@@ -421,6 +424,42 @@ export class OrdersService {
     }
 
     return Number(deliveryMethod.price)
+  }
+
+  /**
+   * Рассчитать стоимость доставки (публичный метод для контроллера)
+   */
+  async calculateShippingCost(dto: CalculateShippingDto): Promise<ShippingCalculationResponseDto> {
+    const deliveryMethodEntity = await this.prisma.deliveryMethod.findUnique({
+      where: { id: dto.deliveryMethodId },
+    })
+
+    if (!deliveryMethodEntity) {
+      throw new NotFoundException('Метод доставки не найден')
+    }
+
+    const calculatedPrice = await this.calculateShipping(deliveryMethodEntity, dto.orderAmount)
+
+    const isFreeShipping =
+      deliveryMethodEntity.minAmount !== null &&
+      dto.orderAmount >= Number(deliveryMethodEntity.minAmount)
+    let amountToFreeShipping: number | undefined = undefined
+
+    if (deliveryMethodEntity.minAmount !== null && !isFreeShipping) {
+      amountToFreeShipping = Math.max(0, Number(deliveryMethodEntity.minAmount) - dto.orderAmount)
+    }
+
+    return {
+      deliveryMethodId: deliveryMethodEntity.id,
+      deliveryMethodName: deliveryMethodEntity.name,
+      basePrice: Number(deliveryMethodEntity.price),
+      calculatedPrice: calculatedPrice,
+      isFreeShipping: isFreeShipping,
+      freeShippingThreshold: deliveryMethodEntity.minAmount
+        ? Number(deliveryMethodEntity.minAmount)
+        : undefined,
+      amountToFreeShipping: amountToFreeShipping,
+    }
   }
 
   /**
@@ -439,7 +478,6 @@ export class OrdersService {
     if (method.settings) {
       const settings = method.settings as any
 
-      // Проверка доступности по времени
       if (settings.availableFrom && settings.availableTo) {
         const now = new Date()
         const currentHour = now.getHours()
@@ -450,7 +488,6 @@ export class OrdersService {
         }
       }
 
-      // Проверка по дням недели
       if (settings.availableDays && Array.isArray(settings.availableDays)) {
         const currentDay = new Date().getDay()
         if (!settings.availableDays.includes(currentDay)) {
@@ -476,27 +513,19 @@ export class OrdersService {
       throw new BadRequestException('Недопустимый метод оплаты')
     }
 
-    // Проверки на основе settings
     if (method.settings && orderAmount !== undefined) {
       const settings = method.settings as any
 
-      // Проверка минимальной суммы
       if (settings.minAmount && orderAmount < settings.minAmount) {
         throw new BadRequestException(
           `Минимальная сумма для метода оплаты "${method.name}": ${settings.minAmount} ₽`,
         )
       }
 
-      // Проверка максимальной суммы
       if (settings.maxAmount && orderAmount > settings.maxAmount) {
         throw new BadRequestException(
           `Максимальная сумма для метода оплаты "${method.name}": ${settings.maxAmount} ₽`,
         )
-      }
-
-      // Проверка доступности для определенных категорий товаров
-      if (settings.restrictedCategories && Array.isArray(settings.restrictedCategories)) {
-        // TODO: Проверить, есть ли в корзине товары из запрещенных категорий
       }
     }
 
@@ -507,7 +536,6 @@ export class OrdersService {
    * Создать начальные методы доставки и оплаты (для seed)
    */
   static async createInitialDeliveryAndPaymentMethods(prisma: PrismaService) {
-    // Методы доставки
     const deliveryMethods = [
       {
         name: 'Самовывоз',
@@ -527,11 +555,7 @@ export class OrdersService {
         description: 'Доставка курьером по Бежецку',
         price: 300,
         minAmount: 3000,
-        settings: {
-          availableFrom: 9,
-          availableTo: 21,
-          deliveryTime: '2-4 часа',
-        },
+        settings: { availableFrom: 9, availableTo: 21, deliveryTime: '2-4 часа' },
         sortOrder: 1,
       },
       {
@@ -540,10 +564,7 @@ export class OrdersService {
         description: 'Доставка по Тверской области',
         price: 500,
         minAmount: 5000,
-        settings: {
-          deliveryTime: '1-3 дня',
-          pricePerKm: 10, // Дополнительно за км от города
-        },
+        settings: { deliveryTime: '1-3 дня', pricePerKm: 10 },
         sortOrder: 2,
       },
       {
@@ -552,23 +573,17 @@ export class OrdersService {
         description: 'Отправка транспортной компанией по России',
         price: 800,
         minAmount: 10000,
-        settings: {
-          companies: ['СДЭК', 'ПЭК', 'Деловые линии'],
-          deliveryTime: '3-10 дней',
-        },
+        settings: { companies: ['СДЭК', 'ПЭК', 'Деловые линии'], deliveryTime: '3-10 дней' },
         sortOrder: 3,
       },
     ]
-
-    for (const method of deliveryMethods) {
+    for (const method of deliveryMethods)
       await prisma.deliveryMethod.upsert({
         where: { code: method.code },
         update: method,
         create: method,
       })
-    }
 
-    // Методы оплаты
     const paymentMethods = [
       {
         name: 'Наличными при получении',
@@ -577,9 +592,7 @@ export class OrdersService {
         icon: '💵',
         isOnline: false,
         commission: 0,
-        settings: {
-          maxAmount: 50000, // Ограничение для наличных
-        },
+        settings: { maxAmount: 50000 },
         sortOrder: 0,
       },
       {
@@ -589,10 +602,7 @@ export class OrdersService {
         icon: '💳',
         isOnline: true,
         commission: 2.5,
-        settings: {
-          minAmount: 100,
-          provider: 'Сбербанк',
-        },
+        settings: { minAmount: 100, provider: 'Сбербанк' },
         sortOrder: 1,
       },
       {
@@ -602,10 +612,7 @@ export class OrdersService {
         icon: '🏦',
         isOnline: false,
         commission: 0,
-        settings: {
-          minAmount: 1000,
-          requiresInvoice: true,
-        },
+        settings: { minAmount: 1000, requiresInvoice: true },
         sortOrder: 2,
       },
       {
@@ -615,20 +622,16 @@ export class OrdersService {
         icon: '📱',
         isOnline: true,
         commission: 1,
-        settings: {
-          maxAmount: 100000,
-        },
+        settings: { maxAmount: 100000 },
         sortOrder: 3,
       },
     ]
-
-    for (const method of paymentMethods) {
+    for (const method of paymentMethods)
       await prisma.paymentMethod.upsert({
         where: { code: method.code },
         update: method,
         create: method,
       })
-    }
   }
 
   /**
@@ -641,109 +644,64 @@ export class OrdersService {
     userRole: UserRole,
   ): Promise<OrderResponseDto> {
     try {
-      // Получаем заказ
       const order = await this.prisma.order.findUnique({
         where: { id: orderId },
-        include: {
-          status: true,
-        },
+        include: { status: true },
       })
+      if (!order) throw new NotFoundException('Заказ не найден')
 
-      if (!order) {
-        throw new NotFoundException('Заказ не найден')
-      }
+      const newStatus = await this.prisma.orderStatus.findUnique({ where: { id: dto.statusId } })
+      if (!newStatus || !newStatus.isActive) throw new BadRequestException('Недопустимый статус')
 
-      // Проверяем, что новый статус существует
-      const newStatus = await this.prisma.orderStatus.findUnique({
-        where: { id: dto.statusId },
-      })
-
-      if (!newStatus || !newStatus.isActive) {
-        throw new BadRequestException('Недопустимый статус')
-      }
-
-      // Проверяем, что статус действительно изменяется
-      if (order.statusId === dto.statusId) {
+      if (order.statusId === dto.statusId)
         throw new BadRequestException('Заказ уже имеет этот статус')
-      }
 
-      // Проверка прав для финальных статусов
       if (userRole !== UserRole.ADMIN) {
-        // Менеджеры не могут изменять заказы в финальных статусах
         if (order.status.isFinalSuccess || order.status.isFinalFailure) {
           throw new BadRequestException(
             'Недостаточно прав для изменения заказа в финальном статусе',
           )
         }
-
-        // Менеджеры не могут устанавливать финальные статусы неудачи
         if (newStatus.isFinalFailure) {
           throw new BadRequestException('Недостаточно прав для установки этого статуса')
         }
       }
 
-      // Обновляем статус в транзакции
-      const updatedOrder = await this.prisma.$transaction(async (tx) => {
-        // Обновляем заказ
-        const updated = await tx.order.update({
+      await this.prisma.$transaction(async (tx) => {
+        await tx.order.update({
           where: { id: orderId },
-          data: {
-            statusId: dto.statusId,
-            updatedAt: new Date(),
-          },
+          data: { statusId: dto.statusId, updatedAt: new Date() },
         })
-
-        // Создаем запись в логе
         await tx.orderStatusLog.create({
-          data: {
-            orderId,
-            statusId: dto.statusId,
-            comment: dto.comment,
-            createdById: userId,
-          },
+          data: { orderId, statusId: dto.statusId, comment: dto.comment, createdById: userId },
         })
-
-        // Если заказ отменяется, возвращаем товары на склад
         if (newStatus.isFinalFailure && newStatus.code === 'CANCELLED') {
           const orderItems = await tx.orderItem.findMany({
             where: { orderId },
             include: { product: true },
           })
-
           for (const item of orderItems) {
             if (item.productId && item.product) {
               await tx.product.update({
                 where: { id: item.productId },
-                data: {
-                  stock: {
-                    increment: item.quantity,
-                  },
-                },
+                data: { stock: { increment: item.quantity } },
               })
             }
           }
         }
-
-        return updated
       })
 
-      // Получаем полный заказ с новым статусом
       const fullOrder = await this.prisma.order.findUniqueOrThrow({
         where: { id: orderId },
         include: this.getOrderInclude(),
       })
-
-      // TODO: Отправить уведомление клиенту о смене статуса заказа
-      // - SMS с новым статусом
-      // - Email если есть
-      // - Push-уведомление в приложении
       this.sendStatusChangeNotification(fullOrder, order.status, newStatus).catch((error) => {
         this.logger.error('Ошибка отправки уведомления о смене статуса', error)
       })
 
       return OrderResponseDto.fromEntity(fullOrder)
     } catch (error) {
-      PrismaErrorHelper.handleError(error)
+      PrismaErrorHelper.handleError(error as Error)
     }
   }
 
@@ -755,35 +713,23 @@ export class OrdersService {
     currentUserId?: string,
     userRole?: UserRole,
   ): Promise<OrderStatusLogResponseDto[]> {
-    // Сначала проверяем доступ к заказу
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
       select: { userId: true },
     })
+    if (!order) throw new NotFoundException('Заказ не найден')
 
-    if (!order) {
-      throw new NotFoundException('Заказ не найден')
-    }
-
-    // Проверяем права доступа
     const isAdminOrManager = userRole === UserRole.ADMIN || userRole === UserRole.MANAGER
     if (!isAdminOrManager && order.userId !== currentUserId) {
       throw new NotFoundException('Заказ не найден')
     }
 
-    // Получаем историю
     const history = await this.prisma.orderStatusLog.findMany({
       where: { orderId },
       include: {
         status: true,
         createdBy: {
-          select: {
-            id: true,
-            phone: true,
-            firstName: true,
-            lastName: true,
-            role: true,
-          },
+          select: { id: true, phone: true, firstName: true, lastName: true, role: true },
         },
       },
       orderBy: { createdAt: 'desc' },
@@ -796,47 +742,23 @@ export class OrdersService {
    * Отменить заказ (для пользователей)
    */
   async cancelOrder(orderId: string, userId: string, reason?: string): Promise<OrderResponseDto> {
-    // Получаем заказ
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
-      include: {
-        status: true,
-      },
+      include: { status: true },
     })
-
-    if (!order) {
-      throw new NotFoundException('Заказ не найден')
-    }
-
-    // Проверяем, что заказ принадлежит пользователю
-    if (order.userId !== userId) {
-      throw new NotFoundException('Заказ не найден')
-    }
-
-    // Проверяем, можно ли отменить заказ
-    if (!order.status.canCancelOrder) {
+    if (!order) throw new NotFoundException('Заказ не найден')
+    if (order.userId !== userId) throw new NotFoundException('Заказ не найден')
+    if (!order.status.canCancelOrder)
       throw new BadRequestException('Заказ не может быть отменен в текущем статусе')
-    }
 
-    // Находим статус отмены
     const cancelledStatus = await this.prisma.orderStatus.findFirst({
-      where: {
-        code: 'CANCELLED',
-        isActive: true,
-      },
+      where: { code: 'CANCELLED', isActive: true },
     })
+    if (!cancelledStatus) throw new Error('Статус отмены не настроен в системе')
 
-    if (!cancelledStatus) {
-      throw new Error('Статус отмены не настроен в системе')
-    }
-
-    // Отменяем заказ
     return this.updateStatus(
       orderId,
-      {
-        statusId: cancelledStatus.id,
-        comment: reason || 'Отменен клиентом',
-      },
+      { statusId: cancelledStatus.id, comment: reason || 'Отменен клиентом' },
       userId,
       UserRole.CUSTOMER,
     )
@@ -845,43 +767,21 @@ export class OrdersService {
   /**
    * Получить доступные статусы для перехода
    */
-  async getAvailableStatuses(orderId: string, userRole: UserRole): Promise<any[]> {
-    // Получаем текущий статус заказа
+  async getAvailableStatuses(orderId: string, userRole: UserRole): Promise<OrderStatus[]> {
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
-      select: {
-        statusId: true,
-        status: true,
-      },
+      select: { statusId: true, status: true },
     })
+    if (!order) throw new NotFoundException('Заказ не найден')
 
-    if (!order) {
-      throw new NotFoundException('Заказ не найден')
-    }
+    const where: Prisma.OrderStatusWhereInput = { isActive: true, id: { not: order.statusId } }
 
-    // Базовый запрос для статусов
-    const where: Prisma.OrderStatusWhereInput = {
-      isActive: true,
-      id: { not: order.statusId }, // Исключаем текущий статус
-    }
-
-    // Ограничения для менеджеров
     if (userRole === UserRole.MANAGER) {
-      // Менеджеры не могут устанавливать финальные статусы неудачи
       where.isFinalFailure = false
-
-      // Если заказ в финальном статусе, менеджер не может его менять
-      if (order.status.isFinalSuccess || order.status.isFinalFailure) {
-        return []
-      }
+      if (order.status.isFinalSuccess || order.status.isFinalFailure) return []
     }
 
-    const statuses = await this.prisma.orderStatus.findMany({
-      where,
-      orderBy: { sortOrder: 'asc' },
-    })
-
-    return statuses
+    return this.prisma.orderStatus.findMany({ where, orderBy: { sortOrder: 'asc' } })
   }
 
   /**
@@ -892,18 +792,12 @@ export class OrdersService {
     oldStatus: any,
     newStatus: any,
   ): Promise<void> {
-    // TODO: Реализовать отправку уведомлений
-    // 1. SMS клиенту с информацией о новом статусе
-    // 2. Email если указан
-    // 3. Push-уведомление в мобильное приложение
-    // 4. Webhook для интеграций
-
     this.logger.log(
       `Смена статуса заказа ${order.orderNumber}: ${oldStatus.name} -> ${newStatus.name}`,
     )
   }
 
-  async getAllStatuses() {
+  async getAllStatuses(): Promise<OrderStatus[]> {
     return this.prisma.orderStatus.findMany({
       where: { isActive: true },
       orderBy: { sortOrder: 'asc' },
@@ -993,7 +887,6 @@ export class OrdersService {
         sortOrder: 9,
       },
     ]
-
     for (const status of statuses) {
       await prisma.orderStatus.upsert({
         where: { code: status.code },

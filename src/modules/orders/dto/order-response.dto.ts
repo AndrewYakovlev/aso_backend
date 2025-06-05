@@ -68,11 +68,11 @@ export class OrderResponseDto {
   @ApiProperty({ type: [OrderItemResponseDto] })
   items!: OrderItemResponseDto[]
 
-  @ApiPropertyOptional({
-    description: 'URL для оплаты заказа',
-    example: 'https://payment.example.com/pay/12345',
-  })
-  paymentUrl?: string
+  // @ApiPropertyOptional({
+  //   description: 'URL для оплаты заказа',
+  //   example: 'https://payment.example.com/pay/12345',
+  // })
+  // paymentUrl?: string
 
   static fromEntity(order: any): OrderResponseDto {
     return {
@@ -105,4 +105,13 @@ export class CreateOrderResponseDto extends OrderResponseDto {
     description: 'URL для оплаты заказа (для онлайн методов оплаты)',
   })
   paymentUrl?: string
+
+  static fromEntity(order: any): CreateOrderResponseDto {
+    // Можно добавить `override` если ваша версия TS поддерживает
+    const baseDto = OrderResponseDto.fromEntity(order) // Получаем базовые поля
+    const createDto: CreateOrderResponseDto = {
+      ...baseDto,
+    }
+    return createDto
+  }
 }

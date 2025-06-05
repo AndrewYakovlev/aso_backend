@@ -61,7 +61,7 @@ export class NotificationsService {
   ): Promise<void> {
     try {
       // Проверяем настройки пользователя
-      const settings = await this.settingsService.getUserSettings(recipientId)
+      const settings = await this.settingsService.getSettings(recipientId)
       if (!settings.newMessage) {
         return
       }
@@ -114,7 +114,7 @@ export class NotificationsService {
    */
   async sendChatAssignedNotification(chat: Chat, managerId: string): Promise<void> {
     try {
-      const settings = await this.settingsService.getUserSettings(managerId)
+      const settings = await this.settingsService.getSettings(managerId)
       if (!settings.chatAssigned) {
         return
       }
@@ -155,7 +155,7 @@ export class NotificationsService {
     userId: string,
   ): Promise<void> {
     try {
-      const settings = await this.settingsService.getUserSettings(userId)
+      const settings = await this.settingsService.getSettings(userId)
       if (!settings.chatStatusChanged) {
         return
       }
@@ -194,7 +194,7 @@ export class NotificationsService {
     },
   ): Promise<void> {
     try {
-      const settings = await this.settingsService.getUserSettings(order.userId)
+      const settings = await this.settingsService.getSettings(order.userId)
       if (!settings.orderStatusChanged) {
         return
       }
@@ -222,5 +222,38 @@ export class NotificationsService {
         'NotificationsService',
       )
     }
+  }
+
+  async getNotificationHistory(userId: string, page: number, limit: number): Promise<any> {
+    this.logger.log(
+      `Fetching notification history for user ${userId}, page ${page}, limit ${limit}`,
+      'NotificationsService',
+    )
+    // TODO: Реализовать логику получения истории уведомлений из NotificationLog с пагинацией
+    // Пример:
+    // const [logs, total] = await this.prisma.$transaction([
+    //   this.prisma.notificationLog.findMany({
+    //     where: { userId },
+    //     skip: (page - 1) * limit,
+    //     take: limit,
+    //     orderBy: { sentAt: 'desc' },
+    //   }),
+    //   this.prisma.notificationLog.count({ where: { userId } }),
+    // ]);
+    // return { data: logs, pagination: { total, page, limit, totalPages: Math.ceil(total / limit) } };
+    return { data: [], pagination: { total: 0, page, limit, totalPages: 0 } } // Заглушка
+  }
+
+  async markNotificationClicked(userId: string, notificationId: string): Promise<void> {
+    this.logger.log(
+      `Marking notification ${notificationId} as clicked for user ${userId}`,
+      'NotificationsService',
+    )
+    // TODO: Реализовать логику обновления статуса уведомления в NotificationLog
+    // Пример:
+    // await this.prisma.notificationLog.updateMany({
+    //   where: { id: notificationId, userId, clickedAt: null },
+    //   data: { clickedAt: new Date() },
+    // });
   }
 }

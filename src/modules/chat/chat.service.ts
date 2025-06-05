@@ -1012,13 +1012,12 @@ export class ChatService {
     }
 
     // Проверяем, есть ли уже этот товар в корзине
-    const existingItem = await this.prisma.cartItem.findUnique({
+    const existingItem = await this.prisma.cartItem.findFirst({
+      // <<--- ИЗМЕНЕНИЕ: findFirst вместо findUnique
       where: {
-        cartId_productId_chatProductId: {
-          cartId: cart.id,
-          productId: null,
-          chatProductId,
-        },
+        cartId: cart.id,
+        productId: null, // Явно указываем, что productId должен быть NULL
+        chatProductId: chatProductId,
       },
     })
 
@@ -1035,7 +1034,7 @@ export class ChatService {
       await this.prisma.cartItem.create({
         data: {
           cartId: cart.id,
-          productId: null, // Исправлено с undefined на null
+          productId: undefined, // Заменяем null на undefined
           chatProductId,
           quantity,
           price: chatProduct.price,

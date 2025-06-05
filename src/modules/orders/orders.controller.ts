@@ -201,8 +201,9 @@ export class OrdersController {
     type: ShippingCalculationResponseDto,
   })
   async calculateShipping(
+    // Имя метода в контроллере можно оставить прежним
     @Body() dto: CalculateShippingDto,
   ): Promise<ShippingCalculationResponseDto> {
-    return this.ordersService.calculateShipping(dto)
+    return this.ordersService.calculateShippingCost(dto) // Вызываем новый публичный метод
   }
 }
