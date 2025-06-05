@@ -8,6 +8,8 @@ import {
   VehicleModificationWithRelations,
 } from '../interfaces/vehicle.interface'
 
+// Сначала объявляем классы без циклических зависимостей
+
 export class VehicleMakeResponseDto {
   @ApiProperty()
   id!: string
@@ -24,12 +26,24 @@ export class VehicleMakeResponseDto {
   @ApiPropertyOptional()
   logoUrl?: string | null
 
+  @ApiPropertyOptional()
+  description?: string | null
+
+  @ApiPropertyOptional()
+  metaTitle?: string | null
+
+  @ApiPropertyOptional()
+  metaDescription?: string | null
+
+  @ApiPropertyOptional()
+  metaKeywords?: string | null
+
   @ApiPropertyOptional({
     description: 'Количество моделей',
   })
   modelCount?: number
 
-  @ApiPropertyOptional({ type: [VehicleModelResponseDto] })
+  @ApiPropertyOptional({ type: () => [VehicleModelResponseDto] })
   @Type(() => VehicleModelResponseDto)
   models?: VehicleModelResponseDto[]
 
@@ -41,6 +55,84 @@ export class VehicleMakeResponseDto {
     }
 
     return plainToInstance(VehicleMakeResponseDto, plain)
+  }
+}
+
+export class VehicleModelResponseDto {
+  @ApiProperty()
+  id!: string
+
+  @ApiProperty()
+  makeId!: string
+
+  @ApiProperty()
+  name!: string
+
+  @ApiProperty()
+  slug!: string
+
+  @ApiPropertyOptional()
+  modelCode?: string | null
+
+  @ApiProperty()
+  startYear!: number
+
+  @ApiPropertyOptional()
+  endYear?: number | null
+
+  @ApiPropertyOptional()
+  description?: string | null
+
+  @ApiPropertyOptional()
+  metaTitle?: string | null
+
+  @ApiPropertyOptional()
+  metaDescription?: string | null
+
+  @ApiPropertyOptional()
+  metaKeywords?: string | null
+
+  @ApiPropertyOptional({ type: () => VehicleMakeResponseDto })
+  @Type(() => VehicleMakeResponseDto)
+  make?: VehicleMakeResponseDto
+
+  @ApiPropertyOptional({
+    description: 'Количество поколений',
+  })
+  generationCount?: number
+
+  @ApiPropertyOptional({ type: () => [VehicleGenerationResponseDto] })
+  @Type(() => VehicleGenerationResponseDto)
+  generations?: VehicleGenerationResponseDto[]
+
+  static fromEntity(model: VehicleModelWithRelations): VehicleModelResponseDto {
+    const plain: any = {
+      ...model,
+      generationCount: model._count?.generations || model.generations?.length || 0,
+    }
+
+    // Обрабатываем связи отдельно, чтобы избежать циклических ссылок
+    if (model.make) {
+      plain.make = {
+        id: model.make.id,
+        name: model.make.name,
+        slug: model.make.slug,
+        country: model.make.country,
+        logoUrl: model.make.logoUrl,
+        description: model.make.description,
+        metaTitle: model.make.metaTitle,
+        metaDescription: model.make.metaDescription,
+        metaKeywords: model.make.metaKeywords,
+      }
+    }
+
+    if (model.generations) {
+      plain.generations = model.generations.map((gen) =>
+        VehicleGenerationResponseDto.fromEntity(gen),
+      )
+    }
+
+    return plainToInstance(VehicleModelResponseDto, plain)
   }
 }
 
@@ -66,7 +158,19 @@ export class VehicleGenerationResponseDto {
   @ApiPropertyOptional()
   bodyType?: string | null
 
-  @ApiPropertyOptional({ type: VehicleModelResponseDto })
+  @ApiPropertyOptional()
+  description?: string | null
+
+  @ApiPropertyOptional()
+  metaTitle?: string | null
+
+  @ApiPropertyOptional()
+  metaDescription?: string | null
+
+  @ApiPropertyOptional()
+  metaKeywords?: string | null
+
+  @ApiPropertyOptional({ type: () => VehicleModelResponseDto })
   @Type(() => VehicleModelResponseDto)
   model?: VehicleModelResponseDto
 
@@ -75,18 +179,53 @@ export class VehicleGenerationResponseDto {
   })
   modificationCount?: number
 
-  @ApiPropertyOptional({ type: [VehicleModificationResponseDto] })
+  @ApiPropertyOptional({ type: () => [VehicleModificationResponseDto] })
   @Type(() => VehicleModificationResponseDto)
   modifications?: VehicleModificationResponseDto[]
 
   static fromEntity(generation: VehicleGenerationWithRelations): VehicleGenerationResponseDto {
-    const plain = {
+    const plain: any = {
       ...generation,
-      model: generation.model ? VehicleModelResponseDto.fromEntity(generation.model) : undefined,
       modificationCount: generation._count?.modifications || generation.modifications?.length || 0,
-      modifications: generation.modifications?.map((mod) =>
+    }
+
+    // Обрабатываем связи отдельно
+    if (generation.model) {
+      const model = generation.model
+      plain.model = {
+        id: model.id,
+        makeId: model.makeId,
+        name: model.name,
+        slug: model.slug,
+        modelCode: model.modelCode,
+        startYear: model.startYear,
+        endYear: model.endYear,
+        description: model.description,
+        metaTitle: model.metaTitle,
+        metaDescription: model.metaDescription,
+        metaKeywords: model.metaKeywords,
+      }
+
+      // Добавляем make если есть
+      if (model.make) {
+        plain.model.make = {
+          id: model.make.id,
+          name: model.make.name,
+          slug: model.make.slug,
+          country: model.make.country,
+          logoUrl: model.make.logoUrl,
+          description: model.make.description,
+          metaTitle: model.make.metaTitle,
+          metaDescription: model.make.metaDescription,
+          metaKeywords: model.make.metaKeywords,
+        }
+      }
+    }
+
+    if (generation.modifications) {
+      plain.modifications = generation.modifications.map((mod) =>
         VehicleModificationResponseDto.fromEntity(mod),
-      ),
+      )
     }
 
     return plainToInstance(VehicleGenerationResponseDto, plain)
@@ -115,7 +254,7 @@ export class VehicleModificationResponseDto {
   @ApiPropertyOptional()
   transmission?: string | null
 
-  @ApiPropertyOptional({ type: VehicleGenerationResponseDto })
+  @ApiPropertyOptional({ type: () => VehicleGenerationResponseDto })
   @Type(() => VehicleGenerationResponseDto)
   generation?: VehicleGenerationResponseDto
 
@@ -127,79 +266,67 @@ export class VehicleModificationResponseDto {
   static fromEntity(
     modification: VehicleModificationWithRelations,
   ): VehicleModificationResponseDto {
-    const plain = {
+    const plain: any = {
       ...modification,
-      generation: modification.generation
-        ? VehicleGenerationResponseDto.fromEntity(modification.generation)
-        : undefined,
       applicationCount: modification._count?.applications || 0,
+    }
+
+    // Обрабатываем связи отдельно, чтобы избежать глубокой вложенности
+    if (modification.generation) {
+      const gen = modification.generation
+      plain.generation = {
+        id: gen.id,
+        modelId: gen.modelId,
+        name: gen.name,
+        slug: gen.slug,
+        startYear: gen.startYear,
+        endYear: gen.endYear,
+        bodyType: gen.bodyType,
+      }
+
+      // Добавляем model если есть, но без глубокой вложенности
+      if (gen.model) {
+        plain.generation.model = {
+          id: gen.model.id,
+          makeId: gen.model.makeId,
+          name: gen.model.name,
+          slug: gen.model.slug,
+          modelCode: gen.model.modelCode,
+          startYear: gen.model.startYear,
+          endYear: gen.model.endYear,
+        }
+
+        // Добавляем make
+        if (gen.model.make) {
+          plain.generation.model.make = {
+            id: gen.model.make.id,
+            name: gen.model.make.name,
+            slug: gen.model.make.slug,
+            country: gen.model.make.country,
+            logoUrl: gen.model.make.logoUrl,
+          }
+        }
+      }
     }
 
     return plainToInstance(VehicleModificationResponseDto, plain)
   }
 }
 
-export class VehicleModelResponseDto {
-  @ApiProperty()
-  id!: string
-
-  @ApiProperty()
-  makeId!: string
-
-  @ApiProperty()
-  name!: string
-
-  @ApiProperty()
-  slug!: string
-
-  @ApiPropertyOptional()
-  modelCode?: string | null
-
-  @ApiProperty()
-  startYear!: number
-
-  @ApiPropertyOptional()
-  endYear?: number | null
-
-  @ApiPropertyOptional({ type: VehicleMakeResponseDto })
-  @Type(() => VehicleMakeResponseDto)
-  make?: VehicleMakeResponseDto
-
-  @ApiPropertyOptional({
-    description: 'Количество поколений',
-  })
-  generationCount?: number
-
-  @ApiPropertyOptional({ type: [VehicleGenerationResponseDto] })
-  @Type(() => VehicleGenerationResponseDto)
-  generations?: VehicleGenerationResponseDto[]
-
-  static fromEntity(model: VehicleModelWithRelations): VehicleModelResponseDto {
-    const plain = {
-      ...model,
-      make: model.make ? VehicleMakeResponseDto.fromEntity(model.make) : undefined,
-      generationCount: model._count?.generations || model.generations?.length || 0,
-      generations: model.generations?.map((gen) => VehicleGenerationResponseDto.fromEntity(gen)),
-    }
-
-    return plainToInstance(VehicleModelResponseDto, plain)
-  }
-}
-
 export class VehicleSearchResultDto {
-  @ApiProperty({ type: VehicleMakeResponseDto })
+  @ApiProperty({ type: () => VehicleMakeResponseDto })
   @Type(() => VehicleMakeResponseDto)
   make!: VehicleMakeResponseDto
 
-  @ApiProperty({ type: VehicleModelResponseDto })
+  @ApiProperty({ type: () => VehicleModelResponseDto })
   @Type(() => VehicleModelResponseDto)
   model!: VehicleModelResponseDto
 
-  @ApiPropertyOptional({ type: VehicleGenerationResponseDto })
+  @ApiPropertyOptional({ type: () => VehicleGenerationResponseDto })
   @Type(() => VehicleGenerationResponseDto)
   generation?: VehicleGenerationResponseDto
 
-  @ApiPropertyOptional({ type: VehicleModificationResponseDto })
+  @ApiPropertyOptional({ type: () => VehicleModificationResponseDto })
   @Type(() => VehicleModificationResponseDto)
   modification?: VehicleModificationResponseDto
 

@@ -74,4 +74,36 @@ export class CreateVehicleGenerationDto {
   @IsString()
   @MaxLength(50)
   bodyType?: string
+
+  @ApiPropertyOptional({
+    description: 'Описание поколения',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  description?: string
+
+  @ApiPropertyOptional({
+    description: 'SEO заголовок (генерируется автоматически)',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  metaTitle?: string
+
+  @ApiPropertyOptional({
+    description: 'SEO описание (генерируется автоматически)',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  metaDescription?: string
+
+  @ApiPropertyOptional({
+    description: 'SEO ключевые слова (генерируются автоматически)',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  metaKeywords?: string
 }

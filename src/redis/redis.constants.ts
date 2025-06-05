@@ -35,6 +35,7 @@ export const CacheKeys = {
 
   // Vehicles
   VEHICLES: 'vehicles:',
+  VEHICLE_APPS: 'vehicle-apps:',
 } as const
 
 export const CacheTTL = {
@@ -51,6 +52,7 @@ export const CacheTTL = {
   BRANDS: 2 * 60 * 60, // 2 часа
   CHARACTERISTICS: 60 * 60, // 1 час
   VEHICLES: 2 * 60 * 60, // 2 часа
+  VEHICLE_APPS: 30 * 60, // 30 минут
 
   // Долгоживущие (дни)
   SEO_SITEMAP: 24 * 60 * 60, // 24 часа

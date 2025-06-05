@@ -240,6 +240,12 @@ model VehicleMake {
   country String?
   logoUrl String?
 
+  // SEO поля
+  description     String?
+  metaTitle       String?
+  metaDescription String?
+  metaKeywords    String?
+
   models VehicleModel[]
 
   @@index([slug])
@@ -254,6 +260,12 @@ model VehicleModel {
   modelCode String?
   startYear Int
   endYear   Int?
+
+  // SEO поля
+  description     String?
+  metaTitle       String?
+  metaDescription String?
+  metaKeywords    String?
 
   generations VehicleGeneration[]
 
@@ -270,6 +282,12 @@ model VehicleGeneration {
   startYear Int
   endYear   Int?
   bodyType  String?
+
+  // SEO поля
+  description     String?
+  metaTitle       String?
+  metaDescription String?
+  metaKeywords    String?
 
   modifications VehicleModification[]
 

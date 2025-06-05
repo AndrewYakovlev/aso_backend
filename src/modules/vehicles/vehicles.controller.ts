@@ -460,4 +460,39 @@ export class VehiclesController {
     // TODO: Реализовать после создания модуля VehicleApplications
     throw new NotFoundException('Функция получения запчастей еще не реализована')
   }
+
+  // ================== SEO ENDPOINTS ==================
+
+  @Get('seo/makes/:slug')
+  @ApiOperation({ summary: 'Получить марку с SEO данными' })
+  @ApiParam({ name: 'slug', description: 'Slug марки' })
+  @ApiResponse({
+    status: 200,
+    description: 'Марка с SEO данными',
+  })
+  async getMakeWithSeo(@Param('slug') slug: string) {
+    return this.vehiclesService.getMakeWithSeo(slug)
+  }
+
+  @Get('seo/models/:slug')
+  @ApiOperation({ summary: 'Получить модель с SEO данными' })
+  @ApiParam({ name: 'slug', description: 'Slug модели' })
+  @ApiResponse({
+    status: 200,
+    description: 'Модель с SEO данными',
+  })
+  async getModelWithSeo(@Param('slug') slug: string) {
+    return this.vehiclesService.getModelWithSeo(slug)
+  }
+
+  @Get('seo/generations/:slug')
+  @ApiOperation({ summary: 'Получить поколение с SEO данными' })
+  @ApiParam({ name: 'slug', description: 'Slug поколения' })
+  @ApiResponse({
+    status: 200,
+    description: 'Поколение с SEO данными',
+  })
+  async getGenerationWithSeo(@Param('slug') slug: string) {
+    return this.vehiclesService.getGenerationWithSeo(slug)
+  }
 }

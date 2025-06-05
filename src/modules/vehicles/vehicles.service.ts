@@ -28,6 +28,7 @@ import {
   VehicleModificationWithRelations,
   VehicleSearchResult,
 } from './interfaces/vehicle.interface'
+import { SeoUtil } from '@common/utils/seo.util'
 
 @Injectable()
 export class VehiclesService {
@@ -57,10 +58,20 @@ export class VehiclesService {
         throw new ConflictException('Марка с таким slug уже существует')
       }
 
+      // Генерируем SEO данные если не указаны
+      const metaTitle = dto.metaTitle || SeoUtil.generateVehicleMakeMetaTitle(dto.name)
+      const metaDescription =
+        dto.metaDescription || SeoUtil.generateVehicleMakeMetaDescription(dto.name, dto.country)
+      const metaKeywords =
+        dto.metaKeywords || SeoUtil.generateVehicleMakeMetaKeywords(dto.name, dto.country)
+
       const make = await this.prisma.vehicleMake.create({
         data: {
           ...dto,
           slug,
+          metaTitle,
+          metaDescription,
+          metaKeywords,
         },
         include: {
           _count: {
@@ -224,10 +235,30 @@ export class VehiclesService {
         throw new BadRequestException('Год окончания не может быть меньше года начала')
       }
 
+      // Генерируем SEO данные
+      const metaTitle =
+        dto.metaTitle ||
+        SeoUtil.generateVehicleModelMetaTitle(make.name, dto.name, {
+          start: dto.startYear,
+          end: dto.endYear,
+        })
+      const metaDescription =
+        dto.metaDescription ||
+        SeoUtil.generateVehicleModelMetaDescription(make.name, dto.name, {
+          start: dto.startYear,
+          end: dto.endYear,
+        })
+      const metaKeywords =
+        dto.metaKeywords ||
+        SeoUtil.generateVehicleModelMetaKeywords(make.name, dto.name, dto.modelCode)
+
       const model = await this.prisma.vehicleModel.create({
         data: {
           ...dto,
           slug,
+          metaTitle,
+          metaDescription,
+          metaKeywords,
         },
         include: {
           make: true,
@@ -389,7 +420,8 @@ export class VehiclesService {
       }
 
       // Генерируем slug
-      const slug = dto.slug || this.generateSlug(`${model.make.name} ${model.name} ${dto.name}`)
+      const makeName = model.make?.name || 'Unknown'
+      const slug = dto.slug || this.generateSlug(`${makeName} ${model.name} ${dto.name}`)
 
       // Проверяем уникальность
       const existingGeneration = await this.prisma.vehicleGeneration.findFirst({
@@ -411,10 +443,33 @@ export class VehiclesService {
         throw new BadRequestException('Год окончания не может быть меньше года начала')
       }
 
+      // Генерируем SEO данные
+      const metaTitle =
+        dto.metaTitle ||
+        SeoUtil.generateVehicleGenerationMetaTitle(makeName, model.name, dto.name, {
+          start: dto.startYear,
+          end: dto.endYear,
+        })
+      const metaDescription =
+        dto.metaDescription ||
+        SeoUtil.generateVehicleGenerationMetaDescription(
+          makeName,
+          model.name,
+          dto.name,
+          dto.bodyType,
+          { start: dto.startYear, end: dto.endYear },
+        )
+      const metaKeywords =
+        dto.metaKeywords ||
+        SeoUtil.generateVehicleModelMetaKeywords(makeName, model.name, model.modelCode)
+
       const generation = await this.prisma.vehicleGeneration.create({
         data: {
           ...dto,
           slug,
+          metaTitle,
+          metaDescription,
+          metaKeywords,
         },
         include: {
           model: {
@@ -738,7 +793,7 @@ export class VehiclesService {
 
     const searchTerm = searchDto.q.toLowerCase()
 
-    // Поиск по маркам
+    // Поиск по маркам с условным включением модификаций
     const makes = await this.prisma.vehicleMake.findMany({
       where: {
         name: {
@@ -786,14 +841,17 @@ export class VehiclesService {
               ) {
                 results.push({ make, model, generation })
 
-                // Ищем модификации
-                if (searchDto.includeModifications && generation.modifications) {
-                  for (const modification of generation.modifications) {
-                    if (
-                      modification.name?.toLowerCase().includes(searchTerm) ||
-                      modification.engineCode?.toLowerCase().includes(searchTerm)
-                    ) {
-                      results.push({ make, model, generation, modification })
+                // Ищем модификации (исправлено - проверяем тип)
+                if (searchDto.includeModifications && 'modifications' in generation) {
+                  const genWithMods = generation as any
+                  if (genWithMods.modifications && Array.isArray(genWithMods.modifications)) {
+                    for (const modification of genWithMods.modifications) {
+                      if (
+                        modification.name?.toLowerCase().includes(searchTerm) ||
+                        modification.engineCode?.toLowerCase().includes(searchTerm)
+                      ) {
+                        results.push({ make, model, generation, modification })
+                      }
                     }
                   }
                 }
@@ -818,8 +876,130 @@ export class VehiclesService {
     await this.redisService.delByPattern(`${CacheKeys.VEHICLES}*`)
   }
 
-  // Добавим константу для кеша в redis.constants.ts
-  // VEHICLES: 'vehicles:',
-  // И в CacheTTL:
-  // VEHICLES: 2 * 60 * 60, // 2 часа
+  /**
+   * Получить марку со структурированными данными для SEO
+   */
+  @Cacheable({
+    key: (slug: string) => `${CacheKeys.VEHICLES}make:seo:${slug}`,
+    ttl: CacheTTL.VEHICLES,
+  })
+  async getMakeWithSeo(slug: string): Promise<any> {
+    const make = await this.prisma.vehicleMake.findFirst({
+      where: { slug },
+      include: {
+        models: {
+          orderBy: { name: 'asc' },
+        },
+        _count: {
+          select: { models: true },
+        },
+      },
+    })
+
+    if (!make) {
+      throw new NotFoundException('Марка не найдена')
+    }
+
+    const canonicalUrl = SeoUtil.generateVehicleMakeCanonicalUrl(slug)
+    const structuredData = SeoUtil.generateVehicleMakeStructuredData({
+      name: make.name,
+      description: make.description,
+      country: make.country,
+      canonicalUrl,
+      modelsCount: make._count.models,
+    })
+
+    return {
+      ...make,
+      seo: {
+        canonicalUrl,
+        structuredData,
+      },
+    }
+  }
+
+  /**
+   * Получить модель со структурированными данными для SEO
+   */
+  @Cacheable({
+    key: (slug: string) => `${CacheKeys.VEHICLES}model:seo:${slug}`,
+    ttl: CacheTTL.VEHICLES,
+  })
+  async getModelWithSeo(slug: string): Promise<any> {
+    const model = await this.prisma.vehicleModel.findFirst({
+      where: { slug },
+      include: {
+        make: true,
+        generations: {
+          orderBy: { startYear: 'desc' },
+        },
+        _count: {
+          select: { generations: true },
+        },
+      },
+    })
+
+    if (!model) {
+      throw new NotFoundException('Модель не найдена')
+    }
+
+    const canonicalUrl = SeoUtil.generateVehicleModelCanonicalUrl(model.make.slug, model.slug)
+    const structuredData = SeoUtil.generateVehicleModelStructuredData({
+      makeName: model.make.name,
+      name: model.name,
+      description: model.description,
+      canonicalUrl,
+      startYear: model.startYear,
+      endYear: model.endYear,
+    })
+
+    return {
+      ...model,
+      seo: {
+        canonicalUrl,
+        structuredData,
+      },
+    }
+  }
+
+  /**
+   * Получить поколение со структурированными данными для SEO
+   */
+  @Cacheable({
+    key: (slug: string) => `${CacheKeys.VEHICLES}generation:seo:${slug}`,
+    ttl: CacheTTL.VEHICLES,
+  })
+  async getGenerationWithSeo(slug: string): Promise<any> {
+    const generation = await this.prisma.vehicleGeneration.findFirst({
+      where: { slug },
+      include: {
+        model: {
+          include: { make: true },
+        },
+        modifications: {
+          orderBy: { name: 'asc' },
+        },
+        _count: {
+          select: { modifications: true },
+        },
+      },
+    })
+
+    if (!generation) {
+      throw new NotFoundException('Поколение не найдено')
+    }
+
+    const canonicalUrl = SeoUtil.generateVehicleGenerationCanonicalUrl(
+      generation.model.make.slug,
+      generation.model.slug,
+      generation.slug,
+    )
+
+    return {
+      ...generation,
+      seo: {
+        canonicalUrl,
+      },
+    }
+  }
 }

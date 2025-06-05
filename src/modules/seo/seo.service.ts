@@ -252,4 +252,83 @@ Host: ${this.baseUrl.replace(/^https?:\/\//, '')}
     <lastmod>${lastmod}</lastmod>
   </sitemap>\n`
   }
+
+  /**
+   * Генерация sitemap для автомобилей
+   */
+  @Cacheable({
+    key: () => `${CacheKeys.SEO}sitemap:vehicles`,
+    ttl: CacheTTL.SEO_SITEMAP,
+  })
+  async generateVehiclesSitemap(): Promise<string> {
+    const [makes, models, generations] = await Promise.all([
+      this.prisma.vehicleMake.findMany({
+        where: {},
+        select: {
+          slug: true,
+        },
+      }),
+      this.prisma.vehicleModel.findMany({
+        where: {},
+        select: {
+          slug: true,
+          make: {
+            select: {
+              slug: true,
+            },
+          },
+        },
+      }),
+      this.prisma.vehicleGeneration.findMany({
+        where: {},
+        select: {
+          slug: true,
+          model: {
+            select: {
+              slug: true,
+              make: {
+                select: {
+                  slug: true,
+                },
+              },
+            },
+          },
+        },
+      }),
+    ])
+
+    let xml = '<?xml version="1.0" encoding="UTF-8"?>\n'
+    xml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+
+    // Марки
+    for (const make of makes) {
+      xml += '<url>\n'
+      xml += `<loc>${this.baseUrl}/vehicles/makes/${make.slug}</loc>\n`
+      xml += '<changefreq>weekly</changefreq>\n'
+      xml += '<priority>0.8</priority>\n'
+      xml += '</url>\n'
+    }
+
+    // Модели
+    for (const model of models) {
+      xml += '<url>\n'
+      xml += `<loc>${this.baseUrl}/vehicles/makes/${model.make.slug}/models/${model.slug}</loc>\n`
+      xml += '<changefreq>weekly</changefreq>\n'
+      xml += '<priority>0.7</priority>\n'
+      xml += '</url>\n'
+    }
+
+    // Поколения
+    for (const generation of generations) {
+      xml += '<url>\n'
+      xml += `<loc>${this.baseUrl}/vehicles/makes/${generation.model.make.slug}/models/${generation.model.slug}/generations/${generation.slug}</loc>\n`
+      xml += '<changefreq>monthly</changefreq>\n'
+      xml += '<priority>0.6</priority>\n'
+      xml += '</url>\n'
+    }
+
+    xml += '</urlset>'
+
+    return xml
+  }
 }

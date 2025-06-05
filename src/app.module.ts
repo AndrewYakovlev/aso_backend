@@ -18,6 +18,7 @@ import { validationSchema } from './config/validation.schema'
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter'
 import { ResponseInterceptor } from './common/interceptors/response.interceptor'
 import { LoggerMiddleware } from './common/middleware/logger.middleware'
+import { VehicleApplicationsModule } from '@modules/vehicle-applications/vehicle-applications.module'
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { LoggerMiddleware } from './common/middleware/logger.middleware'
     CharacteristicsModule,
     VehiclesModule,
     SeoModule,
+    VehicleApplicationsModule,
     // Здесь будут подключаться остальные модули:
     // OrdersModule,
     // CartModule,
