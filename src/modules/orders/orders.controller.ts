@@ -1,6 +1,13 @@
 // src/modules/orders/orders.controller.ts
 import { Controller, Get, Post, Body, Param, Query, Patch } from '@nestjs/common'
-import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery } from '@nestjs/swagger'
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiParam,
+  ApiQuery,
+  ApiExtraModels,
+} from '@nestjs/swagger'
 import { OrdersService } from './orders.service'
 import { CreateOrderDto } from './dto/create-order.dto'
 import { OrderFiltersDto } from './dto/order-filters.dto'
@@ -14,9 +21,11 @@ import { OrderStatusLogResponseDto } from './dto/order-status-log-response.dto'
 import { DeliveryMethodResponseDto } from './dto/delivery-method-response.dto'
 import { PaymentMethodResponseDto } from './dto/payment-method-response.dto'
 import { CalculateShippingDto, ShippingCalculationResponseDto } from './dto/calculate-shipping.dto'
+import { ChatProductResponseDto } from '@modules/chat/dto/chat-product.dto'
 
 @ApiTags('Orders')
 @Controller('orders')
+@ApiExtraModels(ChatProductResponseDto)
 export class OrdersController {
   constructor(private readonly ordersService: OrdersService) {}
 
